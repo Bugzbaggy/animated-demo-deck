@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard widget: the checkout slowdown</title>
+<style>
+/* ------------------------------------------------------------------ Dashboard widget
+   The Dashboard kind as a self-contained, responsive, reader-paced widget for a blog or docs page.
+   System fonts, no network. Steps are states: [data-at="N"] elements reveal at step N, tiles change
+   state classes, gauges fill (--fill), sparklines draw (stroke-dashoffset), the rail needle moves
+   (--pos), numbers count up on entry. Next / Back / Replay, click the stage, arrow keys, ?step=N. */
+:root{
+  --bg:#0f172a;--bg2:#0b1222;--panel:#16213a;--panel2:#1b2745;--line:#263554;--line2:#324468;
+  --ink:#e6ecf7;--ink2:#b8c4dc;--muted:#7f8db0;--faint:#4e5c80;
+  --ok:#22c55e;--ok-soft:rgba(34,197,94,.16);--warn:#f59e0b;--warn-soft:rgba(245,158,11,.16);
+  --crit:#ef4444;--crit-soft:rgba(239,68,68,.16);--info:#38bdf8;--info-soft:rgba(56,189,248,.16);
+  --accent:#60a5fa;--accent-soft:rgba(96,165,250,.18);
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;--mono:ui-monospace,Consolas,"SF Mono",Menlo,monospace;
+  --t:.45s;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-text-size-adjust:100%}
+.w{display:flex;flex-direction:column;min-height:100vh;outline:none;background:radial-gradient(900px 500px at 70% -10%,#172446 0%,var(--bg) 55%,var(--bg2) 100%)}
+.stage{flex:1;padding:14px 16px 10px;display:flex;flex-direction:column;gap:12px}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono)}
+
+/* header */
+.hd{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.kicker{font:700 11px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+h1{margin:6px 0 0;font:800 clamp(18px,2.6vw,26px)/1.15 var(--sans);letter-spacing:-.02em}
+.sub{margin:4px 0 0;font:400 clamp(13px,1.5vw,15px)/1.35 var(--sans);color:var(--muted)}
+.tags{display:flex;gap:8px;flex-wrap:wrap}
+
+/* reveal */
+[data-at]{opacity:0;transform:translateY(10px);transition:opacity var(--t) ease,transform var(--t) ease}
+[data-at].on{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* tiles */
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.grid.two{grid-template-columns:repeat(2,1fr)}
+.tile{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px 12px 16px;overflow:hidden;
+  box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 8px 24px rgba(0,0,0,.25);transition:box-shadow var(--t),background var(--t),opacity var(--t)}
+.tile::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--line2);transition:background var(--t)}
+.tile.ok::before{background:var(--ok)}.tile.warn::before{background:var(--warn)}.tile.crit::before{background:var(--crit)}.tile.info::before{background:var(--info)}
+.tile.warn{box-shadow:0 0 0 1px rgba(245,158,11,.35),0 8px 24px rgba(0,0,0,.25)}
+.tile.crit{box-shadow:0 0 0 1px rgba(239,68,68,.45),0 0 30px rgba(239,68,68,.18),0 8px 24px rgba(0,0,0,.25);background:linear-gradient(180deg,rgba(239,68,68,.12),transparent 60%),var(--panel)}
+.tile.dim{opacity:.5}
+.tile .tt{display:flex;align-items:center;gap:8px;font:700 10px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.tile .tt .pill{margin-left:auto}
+.tile .body{margin-top:10px}
+.node .nm{font:700 17px/1 var(--mono);margin-top:8px}
+.node .meta{margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;font:500 12px/1 var(--sans);color:var(--ink2)}
+.node .meta b{color:var(--ink);font-weight:700}
+
+/* kpi, pills, gauge, sparkline, log */
+.kpi{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 8px}
+.kpi .kv{font:800 clamp(28px,4vw,44px)/1 var(--sans);letter-spacing:-.03em}
+.kpi .kv.ok{color:var(--ok)}.kpi .kv.warn{color:var(--warn)}.kpi .kv.crit{color:var(--crit)}.kpi .kv.accent{color:var(--accent)}
+.kpi .ku{font:600 14px/1 var(--sans);color:var(--muted)}
+.kpi .ks{flex-basis:100%;margin-top:6px;font:400 12px/1.35 var(--sans);color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:4px 7px;border-radius:6px;font:700 9.5px/1 var(--sans);letter-spacing:.1em;text-transform:uppercase;
+  background:var(--line);color:var(--ink2);white-space:nowrap;transition:background var(--t),color var(--t)}
+.pill::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}.pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.crit{background:var(--crit-soft);color:var(--crit)}.pill.info{background:var(--info-soft);color:var(--info)}.pill.off{background:var(--line);color:var(--muted)}
+.gauge{position:relative;height:9px;border-radius:5px;background:var(--line);overflow:hidden;margin-top:8px}
+.gauge .gf{position:absolute;left:0;top:0;bottom:0;width:calc(var(--fill,0)*100%);border-radius:5px;background:var(--accent);transition:width 1.1s ease}
+.gauge.ok .gf{background:var(--ok)}.gauge.warn .gf{background:var(--warn)}.gauge.crit .gf{background:var(--crit)}.gauge.info .gf{background:var(--info)}
+svg.spark{display:block;width:100%;height:auto;overflow:visible;margin-top:6px}
+svg.spark polyline{fill:none;stroke:var(--accent);stroke-width:3;stroke-linecap:round;stroke-linejoin:round;transition:stroke-dashoffset 1.6s ease}
+svg.spark.warn polyline{stroke:var(--warn)}svg.spark.crit polyline{stroke:var(--crit)}svg.spark.ok polyline{stroke:var(--ok)}
+svg.spark .fill{fill:var(--accent);opacity:0;transition:opacity .5s ease 1.4s}
+svg.spark.warn .fill{fill:var(--warn)}svg.spark.crit .fill{fill:var(--crit)}
+svg.spark.drawn .fill{opacity:.14}
+.log{margin-top:8px;font:400 12px/1.5 var(--mono);color:var(--ink2);overflow:hidden}
+.log .ln{display:flex;gap:8px;white-space:nowrap}
+.log .ts{color:var(--faint);flex:none}.log .lv{flex:none;width:40px;font-weight:700}
+.log .lv.INFO{color:var(--info)}.log .lv.WARN{color:var(--warn)}.log .lv.CRIT{color:var(--crit)}.log .lv.OK{color:var(--ok)}
+.log .tx{overflow:hidden;text-overflow:ellipsis}.log .tx b{color:var(--ink);font-weight:600}
+
+/* rail: positions are % of the time window; the needle follows --pos */
+.rail{position:relative;height:74px;margin:4px 26px 0}  /* side margins keep the end ticks' labels and the needle bubble inside */
+.rail .rl{position:absolute;left:0;right:0;top:28px;height:2px;background:var(--line2)}
+.rail .tick{position:absolute;top:22px;transform:translateX(-50%);text-align:center}
+.rail .tick i{display:block;width:2px;height:14px;background:var(--faint);margin:0 auto}
+.rail .tick span{display:block;margin-top:4px;font:500 11px/1 var(--mono);color:var(--muted)}
+.rail .ev{position:absolute;top:19px;transform:translateX(-50%)}
+.rail .ev i{display:block;width:20px;height:20px;border-radius:50%;background:var(--panel);border:3px solid var(--accent);position:relative;z-index:2}
+.rail .ev.ok i{border-color:var(--ok)}.rail .ev.warn i{border-color:var(--warn)}.rail .ev.crit i{border-color:var(--crit)}
+.rail .ev span{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:6px;white-space:nowrap;font:600 11px/1 var(--sans);padding:4px 7px;border-radius:5px;background:var(--panel);border:1px solid var(--line);color:var(--ink2)}
+.rail .ev.ok span{color:var(--ok)}.rail .ev.warn span{color:var(--warn)}.rail .ev.crit span{color:var(--crit)}
+.rail .ev .ping{position:absolute;left:50%;top:50%;width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:50%;border:3px solid var(--accent);opacity:0;pointer-events:none}
+.rail .ev.ok .ping{border-color:var(--ok)}.rail .ev.warn .ping{border-color:var(--warn)}.rail .ev.crit .ping{border-color:var(--crit)}
+.rail .ev.hit .ping{animation:ping 1s ease-out 2}
+@keyframes ping{0%{opacity:.9;transform:scale(.6)}100%{opacity:0;transform:scale(2.6)}}
+.rail .needle{position:absolute;top:8px;left:calc(var(--pos,0)*100%);width:2px;height:42px;background:var(--ink);box-shadow:0 0 10px rgba(230,236,247,.6);z-index:3;transition:left 1.4s cubic-bezier(.45,0,.2,1)}
+.rail .needle .nb{position:absolute;left:50%;top:-24px;transform:translateX(-50%);padding:3px 6px;border-radius:4px;background:var(--ink);color:var(--bg);font:700 11px/1 var(--mono);white-space:nowrap}
+.tile .ring{position:absolute;right:18px;top:50%;width:30px;height:30px;margin-top:-15px;border-radius:50%;border:3px solid var(--crit);opacity:0;pointer-events:none}
+.tile.hit .ring{animation:ping 1s ease-out 2}
+
+/* control bar */
+.bar{position:sticky;bottom:0;display:flex;align-items:center;gap:8px;padding:10px 16px;background:rgba(11,18,34,.92);backdrop-filter:blur(6px);border-top:1px solid var(--line)}
+.bar button{font:700 13px/1 var(--sans);padding:9px 14px;border-radius:9px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);cursor:pointer}
+.bar button.primary{background:var(--accent);border-color:var(--accent);color:#06101f}
+.bar button:disabled{opacity:.4;cursor:default}
+.bar .count{font:600 12px/1 var(--mono);color:var(--muted);min-width:64px;text-align:center}
+.bar .cap{flex:1;font:400 13px/1.35 var(--sans);color:var(--ink2);min-height:1.35em}
+.bar .cap b{color:var(--ink)}
+.hint{font:400 11px/1 var(--sans);color:var(--faint)}
+
+@media (max-width:860px){.grid{grid-template-columns:repeat(2,1fr)}.grid.two{grid-template-columns:1fr}}
+@media (max-width:480px){.stage{padding:12px 12px 6px}.grid{grid-template-columns:1fr}.rail .ev span{display:none}.bar{flex-wrap:wrap}.bar .cap{flex-basis:100%;order:5}.hint{display:none}}
+.grid.three{grid-template-columns:repeat(3,1fr)}
+@media (max-width:860px){.grid.three{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<!-- The example is made up: every name, time and number is an example. -->
+<div class="w" id="w" tabindex="0" aria-label="Interactive dashboard: the checkout slowdown, step by step">
+  <div class="stage" id="stage">
+    <header class="hd">
+      <div>
+        <div class="kicker">Dashboard widget · example</div>
+        <h1>checkout-api, one morning</h1>
+        <p class="sub">Tiles are the unit: a state, a number, a source. The rail carries time (UTC); the needle moves and the tiles react.</p>
+      </div>
+      <div class="tags"><span class="pill info">example data</span></div>
+    </header>
+
+    <div class="grid three">
+      <div class="tile ok" id="t-lat" data-at="1"><div class="tt">p95 latency</div>
+        <div class="body"><div class="kpi"><span class="kv num" id="lat">180</span><span class="ku">ms</span><div class="ks">threshold 800 ms · metrics</div></div></div><div class="ring"></div></div>
+      <div class="tile ok" id="t-hit" data-at="1" data-delay=".1"><div class="tt">Cart cache hit rate</div>
+        <div class="body"><div class="kpi"><span class="kv num" id="hit">94</span><span class="ku">%</span><div class="ks">cachectl stats, 4-minute windows</div></div><div class="gauge ok" id="hitg" style="--fill:.94"><div class="gf"></div></div></div><div class="ring"></div></div>
+      <div class="tile ok" data-at="1" data-delay=".2"><div class="tt">Error rate <span class="pill ok">flat</span></div>
+        <div class="body"><div class="kpi"><span class="kv ok num">0.2</span><span class="ku">%</span><div class="ks">share of checkout calls that failed</div></div>
+          <svg class="spark ok" viewBox="0 0 300 40" data-draw="1"><path class="fill" d="M6,40 L6,30 L300,30 L300,40 Z"/><polyline points="6,30 40,29 75,31 110,30 145,30 180,29 215,30 250,31 294,30"/></svg></div></div>
+    </div>
+
+    <div class="grid two">
+      <div class="tile" data-at="2"><div class="tt">Event log · #checkout</div>
+        <div class="log">
+          <div class="ln" data-at="2"><span class="ts">09:58:10</span><span class="lv INFO">INFO</span><span class="tx">release lead · v2.14 rolled out</span></div>
+          <div class="ln" data-at="3"><span class="ts">10:02:40</span><span class="lv CRIT">HIGH</span><span class="tx"><b>[HIGH] checkout-api p95 latency 2,400 ms</b></span></div>
+          <div class="ln" data-at="4"><span class="ts">10:04:05</span><span class="lv INFO">INFO</span><span class="tx">on-call engineer · reply: the cache, not the database</span></div>
+          <div class="ln" data-at="5"><span class="ts">10:06:30</span><span class="lv WARN">WARN</span><span class="tx">rollback to v2.13 · 6/6 pods by 10:07:05</span></div>
+          <div class="ln" data-at="5" data-delay=".3"><span class="ts">10:11:50</span><span class="lv OK">OK</span><span class="tx"><b>p95 latency back to 180 ms</b></span></div>
+        </div></div>
+      <div class="tile" data-at="4"><div class="tt">Claimed against measured <span class="pill ok">measured</span></div>
+        <div class="body"><div class="kpi"><span class="kv ok num">0.2</span><span class="ku">% errors</span><div class="ks">the alert said “error rate rising”; the on-call engineer measured it flat</div></div>
+          <div class="ks" style="margin-top:10px;font:700 13px/1.4 var(--sans);color:var(--ink)">“Cache hit rate fell from 94% to 12% at 09:58, right after v2.14.”</div></div></div>
+    </div>
+
+    <div class="rail" id="rail" data-at="1" data-delay=".3">
+      <div class="rl"></div>
+      <div class="tick" style="left:0%"><i></i><span>09:50</span></div><div class="tick" style="left:20%"><i></i><span>09:55</span></div><div class="tick" style="left:40%"><i></i><span>10:00</span></div>
+      <div class="tick" style="left:60%"><i></i><span>10:05</span></div><div class="tick" style="left:80%"><i></i><span>10:10</span></div><div class="tick" style="left:100%"><i></i><span>10:15</span></div>
+      <div class="ev" style="left:32.7%" data-e="1"><span>v2.14 out</span><i></i><div class="ping"></div></div>
+      <div class="ev crit" style="left:50.7%" data-e="2"><span>HIGH alert</span><i></i><div class="ping"></div></div>
+      <div class="ev warn" style="left:66%" data-e="3"><span>rollback</span><i></i><div class="ping"></div></div>
+      <div class="ev ok" style="left:87.3%" data-e="4"><span>180 ms</span><i></i><div class="ping"></div></div>
+      <div class="needle" id="needle" style="--pos:0"><div class="nb num" id="nb">09:50</div></div>
+    </div>
+
+    <div class="grid three" data-at="6">
+      <div class="tile accent"><div class="tt">Deploy to alert</div><div class="body"><div class="kpi"><span class="kv accent num cnt" data-to="270" data-at-step="6">0</span><span class="ku">s</span><div class="ks">09:58:10 to 10:02:40</div></div></div></div>
+      <div class="tile accent"><div class="tt">Alert to first lead</div><div class="body"><div class="kpi"><span class="kv accent num cnt" data-to="85" data-at-step="6">0</span><span class="ku">s</span><div class="ks">10:02:40 to 10:04:05</div></div></div></div>
+      <div class="tile accent"><div class="tt">Alert to recovery</div><div class="body"><div class="kpi"><span class="kv accent num cnt" data-to="550" data-at-step="6">0</span><span class="ku">s</span><div class="ks">10:02:40 to 10:11:50</div></div></div></div>
+    </div>
+  </div>
+
+  <div class="bar">
+    <button id="back" aria-label="Back">‹ Back</button>
+    <button id="next" class="primary" aria-label="Next">Next ›</button>
+    <button id="replay" aria-label="Replay">↻</button>
+    <span class="count" id="count">0 / 6</span>
+    <span class="cap" id="cap">Click <b>Next</b> (or the screen) to step through.</span>
+    <span class="hint">← → keys work too</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  const TOTAL = 6;
+  const CAPTIONS = [
+    'Click <b>Next</b> (or the screen) to step through.',
+    '09:50: <b>p95 180 ms · hit rate 94% · errors 0.2%</b>',
+    '09:58:10: <b>v2.14 rolled out</b> · every tile still ok',
+    '10:02:40: <b>p95 2,400 ms</b> · hit rate 12% · the alert fires',
+    '10:04:05: <b>the cache, not the database</b> · errors 0.2%, flat',
+    '10:11:50: <b>p95 180 ms</b> · rolled back to v2.13 at 10:06:30',
+    'Measured: <b>270 s · 85 s · 550 s</b> · each the gap between two times',
+  ];
+  // the needle's position (% of the 09:50 to 10:15 window) and label at each step
+  const NEEDLE = { 0: [0, '09:50'], 1: [0, '09:50'], 2: [32.7, '09:58'], 3: [50.7, '10:02'], 4: [56.3, '10:04'], 5: [87.3, '10:11'], 6: [100, '10:15'] };
+  // the latency and hit rate at each step, and the state of their tiles
+  const LAT = s => (s >= 3 && s < 5 ? 2400 : 180);
+  const HIT = s => (s >= 3 && s < 5 ? 12 : s >= 5 ? 93 : 94);
+  const PINGS = { 2: ['1'], 3: ['2'], 5: ['3', '4'] };
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const root = document.getElementById('w');
+  const cap = document.getElementById('cap'), count = document.getElementById('count');
+  const bNext = document.getElementById('next'), bBack = document.getElementById('back'), bReplay = document.getElementById('replay');
+  const needle = document.getElementById('needle'), nb = document.getElementById('nb');
+  let step = 0, started = false;
+  const timers = [];
+
+  // sparklines: measure once, start fully undrawn
+  document.querySelectorAll('svg.spark polyline').forEach(p => { const L = p.getTotalLength(); p.style.strokeDasharray = L; p.style.strokeDashoffset = L; p.dataset.len = L; });
+
+  function reveal(s) {
+    document.querySelectorAll('[data-at]').forEach(el => {
+      const at = +el.dataset.at, on = at <= s;
+      el.style.transitionDelay = (on && at === s) ? (el.dataset.delay || '0') + 's' : '0s';
+      el.classList.toggle('on', on);
+    });
+  }
+  // count a number up (or down) to `to`; instant when stepping back or with reduced motion
+  function countTo(el, to, ms) {
+    const from = parseFloat(el.textContent.replace(/,/g, '')) || 0;
+    if (reduce || ms === 0) { el.textContent = to.toLocaleString('en-US'); return; }
+    const t0 = performance.now();
+    const tick = now => { const p = Math.min(1, (now - t0) / ms), e = 1 - Math.pow(1 - p, 3); el.textContent = Math.round(from + (to - from) * e).toLocaleString('en-US'); if (p < 1) timers.push(requestAnimationFrame(tick)); };
+    timers.push(requestAnimationFrame(tick));
+  }
+  const setState = (el, state) => { ['ok', 'warn', 'crit'].forEach(c => el.classList.toggle(c, c === state)); };
+  function apply(s, prev) {
+    timers.forEach(cancelAnimationFrame); timers.length = 0;
+    reveal(s);
+    const fwd = s > prev, ms = fwd ? 1200 : 0;
+    // sparklines draw at their step
+    document.querySelectorAll('svg.spark').forEach(svg => { const p = svg.querySelector('polyline'), on = s >= +svg.dataset.draw; p.style.strokeDashoffset = on ? 0 : p.dataset.len; svg.classList.toggle('drawn', on); });
+    // latency and hit rate follow the story; their tiles flip with them
+    const bad = s >= 3 && s < 5;
+    countTo(document.getElementById('lat'), LAT(s), ms);
+    countTo(document.getElementById('hit'), HIT(s), ms);
+    document.getElementById('hitg').style.setProperty('--fill', HIT(s) / 100);
+    ['t-lat', 't-hit'].forEach(id => { const t = document.getElementById(id); setState(t, bad ? 'crit' : 'ok'); t.classList.toggle('hit', fwd && s === 3); });
+    document.getElementById('hitg').className = 'gauge ' + (bad ? 'crit' : 'ok');
+    // closing counters
+    document.querySelectorAll('.kv.cnt').forEach(c => { const at = +c.dataset.atStep; countTo(c, s >= at ? +c.dataset.to : 0, fwd && prev < at ? 1400 : 0); });
+    // the needle, and the events it reaches
+    const [pos, label] = NEEDLE[s]; needle.style.setProperty('--pos', pos / 100); nb.textContent = label;
+    document.querySelectorAll('.rail .ev').forEach(e => e.classList.toggle('hit', fwd && (PINGS[s] || []).includes(e.dataset.e)));
+  }
+  function go(s) {
+    s = Math.max(0, Math.min(TOTAL, s));
+    const prev = step; step = s;
+    apply(s, prev);
+    cap.innerHTML = CAPTIONS[s]; count.textContent = s + ' / ' + TOTAL;
+    bBack.disabled = s === 0; bNext.disabled = s === TOTAL;
+  }
+  bNext.addEventListener('click', e => { e.stopPropagation(); go(step + 1); });
+  bBack.addEventListener('click', e => { e.stopPropagation(); go(step - 1); });
+  bReplay.addEventListener('click', e => { e.stopPropagation(); go(0); setTimeout(() => go(1), 250); });
+  document.getElementById('stage').addEventListener('click', () => { if (step < TOTAL) go(step + 1); });
+  root.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(step + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); go(step - 1); }
+  });
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver((es, io) => { if (es.some(e => e.isIntersecting) && !started) { started = true; io.disconnect(); setTimeout(() => { if (step === 0) go(1); }, 350); } }, { threshold: 0.3 }).observe(root);
+  } else { setTimeout(() => go(1), 600); }
+  go(0);
+  const q = new URLSearchParams(location.search).get('step');
+  if (q !== null) { started = true; for (let k = 1; k <= +q; k++) go(k); }
+})();
+</script>
+</body>
+</html>

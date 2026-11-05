@@ -1,0 +1,70 @@
+{
+  "scenes": [
+    {
+      "n": 1,
+      "id": "intro",
+      "title": "The checkout slowdown",
+      "beats": [
+        {
+          "id": "title",
+          "dur": 3.2,
+          "hold": 7.91
+        },
+        {
+          "id": "alert",
+          "dur": 3.4,
+          "hold": 7.71
+        },
+        {
+          "id": "chips",
+          "dur": 2.6,
+          "hold": 7.62
+        }
+      ]
+    },
+    {
+      "n": 2,
+      "id": "thread",
+      "title": "Eighty-five seconds to a lead",
+      "beats": [
+        {
+          "id": "alert",
+          "dur": 4,
+          "hold": 7.56
+        },
+        {
+          "id": "lead",
+          "dur": 4.2,
+          "hold": 10.91
+        },
+        {
+          "id": "fix",
+          "dur": 4.6,
+          "hold": 12.29
+        }
+      ]
+    },
+    {
+      "n": 3,
+      "id": "cause",
+      "title": "One key per session",
+      "beats": [
+        {
+          "id": "cause",
+          "dur": 3.8,
+          "hold": 7.31
+        },
+        {
+          "id": "fix",
+          "dur": 3.6,
+          "hold": 3.96
+        },
+        {
+          "id": "guard",
+          "dur": 4.4,
+          "hold": 9.82
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: ShellCheck
+        run: shellcheck -S warning ci/*.sh
+      - name: JavaScript parses
+        run: |
+          set -e
+          find skills -name '*.mjs' -o -name '*.js' | sort | while read -r f; do node --check "$f"; done
+          echo "all scripts parse"
+
+  kits:
+    name: Kit ${{ matrix.kind }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [cards, console, board, dashboard]
+    env:
+      KIND: ${{ matrix.kind }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: ffmpeg, and Chrome's sandbox
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg > /dev/null
+          # Ubuntu 24.04 blocks the unprivileged user namespaces Chrome's sandbox needs; older kernels have no such key.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          google-chrome --version
+          ffmpeg -version | head -1
+      - name: Fonts
+        working-directory: skills/animated-demo-deck/kits/${{ matrix.kind }}
+        run: node tools/fetch-fonts.mjs || echo "::warning::fonts not fetched; the deck renders with system fonts"
+      - name: Script, timing, captions, presenter sweep, widget, GIFs
+        run: bash ci/check-kits.sh --gifs --workers 3 "$KIND"
+
+  leak-scan:
+    name: No internal identifiers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Leak scan self-test
+        run: bash ci/leak-scan.test.sh
+      - name: Scan
+        env:
+          # Named terms live in repository secrets, never in this public file.
+          # Fork pull requests get no secrets, so only trusted runs require them.
+          LEAK_EXTRA_PAT: ${{ secrets.LEAK_EXTRA_PAT }}
+          LEAK_EXTRA_PAT_CS: ${{ secrets.LEAK_EXTRA_PAT_CS }}
+          LEAK_REQUIRE_EXTRAS: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: bash ci/leak-scan.sh

@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Console widget: the checkout slowdown</title>
+<style>
+/* Console kit, widget skeleton. Self-contained: system monospace, no images, no network.
+   Reader-paced: Next / Back / Replay, the arrow keys, ?step=N; step 1 plays by itself when scrolled into view.
+   The example is made up: every command, output line and number is an example. */
+:root{
+  --bg:#0b0f17;--pane:#111826;--pane2:#0d131d;--bar:#1a2334;--line:#243047;--line2:#2f3d5a;
+  --ink:#dbe4f3;--ink2:#a7b4ca;--muted:#6f7d95;--faint:#43506a;
+  --green:#5be49b;--amber:#ffcc66;--red:#ff6b6b;--blue:#6fa8ff;--cyan:#67d6e8;--purple:#c39bff;--pink:#ff8fb3;
+  --mono:ui-monospace,Consolas,"Cascadia Mono",Menlo,monospace;--sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--mono);-webkit-text-size-adjust:100%}
+.w{display:flex;flex-direction:column;min-height:100vh;outline:none}
+.stage{flex:1;padding:16px 16px 10px;display:flex;flex-direction:column;gap:14px}
+.hd{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.kicker{font:500 11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1{margin:6px 0 0;font:700 clamp(17px,2.4vw,24px)/1.15 var(--mono);letter-spacing:-.01em}
+h1::before{content:'// ';color:var(--faint)}
+.sub{margin:4px 0 0;font:400 clamp(13px,1.5vw,15px)/1.4 var(--sans);color:var(--ink2)}
+.tags{display:flex;gap:8px;flex-wrap:wrap}
+.tag{font:500 11px/1 var(--mono);padding:7px 10px;border-radius:6px;border:1px solid var(--line2);color:var(--ink2);background:var(--pane2);white-space:nowrap}
+.tag.green{color:var(--green);border-color:rgba(91,228,155,.4)}
+
+[data-at]{opacity:0;transform:translateY(8px);transition:opacity .4s ease,transform .4s ease}
+[data-at].on{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){[data-at],.spin,.tx{transition:none!important;animation:none!important}}
+
+/* layout: terminal left, notes right */
+.grid{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;align-items:start}
+.pane{background:var(--pane);border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.pane .bar{height:34px;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--bar);border-bottom:1px solid var(--line)}
+.pane .dots{display:flex;gap:5px}.pane .dots i{width:9px;height:9px;border-radius:50%;display:block;background:var(--faint)}
+.pane .dots i:nth-child(1){background:#ff5f57}.pane .dots i:nth-child(2){background:#febc2e}.pane .dots i:nth-child(3){background:#28c840}
+.pane .pt{font:500 12.5px/1 var(--mono);color:var(--ink2)}.pane .pt b{color:var(--ink);font-weight:600}
+.pane .body{padding:12px 14px;min-height:300px}
+.lines{font:400 13px/1.6 var(--mono);word-break:break-word}
+.ln{display:block;padding:0 6px;margin:0 -6px;border-radius:4px;white-space:pre-wrap}
+.grid > *{min-width:0}.pane{max-width:100%}
+.ln.cmd{color:var(--ink)}.ln .pr{color:var(--green);font-weight:600}
+.ln.out{color:var(--ink2)}.ln.dim{color:var(--muted)}.ln.ok{color:var(--green)}.ln.warn{color:var(--amber)}.ln.err{color:var(--red)}
+.ln.add{color:var(--green);background:rgba(91,228,155,.1)}.ln.del{color:var(--red);background:rgba(255,107,107,.1)}
+.ln.hl{background:rgba(111,168,255,.12);box-shadow:inset 3px 0 0 var(--blue)}
+.ln.hl.red{background:rgba(255,107,107,.12);box-shadow:inset 3px 0 0 var(--red)}
+.ln.hl.amber{background:rgba(255,204,102,.1);box-shadow:inset 3px 0 0 var(--amber)}
+/* typing: the command's text is clipped and the clip opens in 40 steps once the line is on */
+.ln.cmd .tx{display:inline-block;max-width:calc(100% - 1.2em);vertical-align:top;white-space:pre-wrap;clip-path:inset(0 100% 0 0)}
+.ln.cmd.on .tx{animation:typing 1.1s steps(40,end) .15s forwards}
+@keyframes typing{to{clip-path:inset(0 -2% 0 0)}}
+/* spinner: turns while the line is on, stops as a green tick when the pane gets .done */
+.spin{display:inline-block;width:1.1em;color:var(--blue)}
+.spin::before{content:'⠋'}
+.ln.on .spin{animation:spin .8s steps(10,end) infinite}
+@keyframes spin{0%{content:'⠋'}10%{content:'⠙'}20%{content:'⠹'}30%{content:'⠸'}40%{content:'⠼'}50%{content:'⠴'}60%{content:'⠦'}70%{content:'⠧'}80%{content:'⠇'}90%{content:'⠏'}}
+.pane.done .spin{animation:none;color:var(--green)}
+.pane.done .spin::before{content:'✓'}
+/* notes */
+.notes{display:flex;flex-direction:column;gap:8px}
+.card{background:var(--pane2);border:1px solid var(--line);border-left:4px solid var(--blue);border-radius:8px;padding:10px 12px;font:400 12.5px/1.45 var(--sans);color:var(--ink2)}
+.card .ct{font:600 12px/1.3 var(--mono);color:var(--ink);margin-bottom:4px}
+.card.green{border-left-color:var(--green)}.card.green .ct{color:var(--green)}
+.card.amber{border-left-color:var(--amber)}.card.amber .ct{color:var(--amber)}
+.card .mono{font:500 11px/1.4 var(--mono);color:var(--ink);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.kpi{background:var(--pane2);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.kpi .kv{font:700 22px/1 var(--mono);color:var(--green);white-space:nowrap}
+.kpi .kl{margin-top:6px;font:400 11px/1.3 var(--sans);color:var(--ink2)}
+
+/* status bar = controls */
+.sbar{position:sticky;bottom:0;display:flex;align-items:center;gap:8px;padding:8px 12px 8px 0;background:#121a28;border-top:1px solid var(--line)}
+.sbar .sess{align-self:stretch;display:flex;align-items:center;padding:0 10px;background:var(--green);color:#07130c;font:700 12px/1 var(--mono)}
+.sbar button{font:600 12px/1 var(--mono);padding:8px 11px;border-radius:6px;border:1px solid var(--line2);background:var(--pane);color:var(--ink);cursor:pointer}
+.sbar button.primary{background:var(--blue);border-color:var(--blue);color:#07111f}
+.sbar button:disabled{opacity:.4;cursor:default}
+.sbar .count{font:500 11px/1 var(--mono);color:var(--muted);min-width:52px;text-align:center}
+.sbar .cap{flex:1;font:400 12.5px/1.35 var(--mono);color:var(--ink2);min-height:1.35em}
+.sbar .cap::before{content:'> ';color:var(--green)}
+.sbar .cap b{color:var(--amber);font-weight:600}
+.hint{font:400 10.5px/1 var(--mono);color:var(--faint)}
+
+@media (max-width:860px){.grid{grid-template-columns:1fr}.pane .body{min-height:0}}
+@media (max-width:560px){.stage{padding:12px 12px 8px}.lines{font-size:12px}.sbar{flex-wrap:wrap}.sbar .sess{display:none}.sbar{padding-left:12px}.sbar .cap{flex-basis:100%;order:5}.hint{display:none}.kpis{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="w" id="w" tabindex="0" aria-label="Interactive terminal: the checkout slowdown, step by step">
+  <div class="stage" id="stage">
+    <header class="hd">
+      <div>
+        <div class="kicker">Console widget · example</div>
+        <h1>The checkout slowdown</h1>
+        <p class="sub">What changed, what it did to the cache, and the rollback. Click <b>Next</b> to replay the session.</p>
+      </div>
+      <div class="tags"><span class="tag green">example run</span><span class="tag">UTC</span></div>
+    </header>
+
+    <div class="grid">
+      <div class="pane" id="pane">
+        <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="pt"><b>shell</b> · on-call laptop</span></div>
+        <div class="body"><div class="lines">
+          <div class="ln cmd" data-at="1"><span class="pr">$</span> <span class="tx">deployctl history checkout-api --last 2</span></div>
+          <div class="ln out hl" data-at="1" data-delay="1.3">v2.14  2026-03-12 09:58:10  live</div>
+          <div class="ln dim" data-at="1" data-delay="1.45">v2.13  2026-03-10 16:20:42  replaced</div>
+          <div class="ln cmd" data-at="2"><span class="pr">$</span> <span class="tx">metrics query 'p95(checkout_latency_ms)' --from 09:58 --to 10:02</span></div>
+          <div class="ln out" data-at="2" data-delay="1.3">09:58    190 ms</div>
+          <div class="ln out" data-at="2" data-delay="1.45">10:00  1,950 ms</div>
+          <div class="ln out hl red" data-at="2" data-delay="1.6">10:02  2,400 ms</div>
+          <div class="ln dim hl amber" data-at="3"># deploy 09:58:10 → alert 10:02:40 = 270 s</div>
+          <div class="ln cmd" data-at="4"><span class="pr">$</span> <span class="tx">cachectl stats cart --from 09:54 --to 10:02 --step 4m</span></div>
+          <div class="ln out" data-at="4" data-delay="1.3">09:54-09:58  hit rate 94%</div>
+          <div class="ln out hl red" data-at="4" data-delay="1.45">09:58-10:02  hit rate 12%</div>
+          <div class="ln cmd" data-at="5"><span class="pr">$</span> <span class="tx">deployctl rollback checkout-api --to v2.13</span></div>
+          <div class="ln out" data-at="5" data-delay="1.3"><span class="spin"></span> rolling back (6 pods)</div>
+          <div class="ln ok" data-at="6">done 10:06:30 → 10:07:05 · p95 180 ms at 10:12</div>
+          <div class="ln dim hl amber" data-at="6" data-delay=".2"># alert 10:02:40 → OK post 10:11:50 = 550 s</div>
+        </div></div>
+      </div>
+
+      <div class="notes">
+        <div class="card" data-at="1"><div class="ct">What changed</div>One deploy in the window: v2.14 at 09:58:10.</div>
+        <div class="card" data-at="2"><div class="ct">The latency</div>190 ms at 09:58, 2,400 ms four minutes later.</div>
+        <div class="card amber" data-at="3"><div class="ct">A worked-out number</div>No command printed 270 s; it is two printed times subtracted, so it is a <span class="mono">#</span> comment.</div>
+        <div class="card" data-at="4"><div class="ct">The cache</div>The new key adds the session id, so the hit rate falls to 12%.</div>
+        <div class="card green" data-at="5"><div class="ct">The rollback</div>A spinner while the six pods roll back; a tick when they are done.</div>
+        <div class="kpis" data-at="6">
+          <div class="kpi"><div class="kv">270 s</div><div class="kl">deploy to alert</div></div>
+          <div class="kpi"><div class="kv">12%</div><div class="kl">hit rate after 09:58</div></div>
+          <div class="kpi"><div class="kv">550 s</div><div class="kl">alert to 180 ms again</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sbar">
+    <span class="sess">[demo]</span>
+    <button id="back" aria-label="Back">‹ Back</button>
+    <button id="next" class="primary" aria-label="Next">Next ›</button>
+    <button id="replay" aria-label="Replay">↻</button>
+    <span class="count" id="count">0 / 6</span>
+    <span class="cap" id="cap">Click <b>Next</b> (or the terminal) to run it.</span>
+    <span class="hint">← → keys work too</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  const TOTAL = 6;
+  const CAPTIONS = [
+    'Click <b>Next</b> (or the terminal) to run it.',
+    'deployctl history → <b>v2.14 rolled out at 09:58:10</b>',
+    'metrics query p95 → <b>2,400 ms at 10:02</b>',
+    '# deploy → alert → <b>270 s</b>, worked out, not printed',
+    'cachectl stats cart → <b>hit rate 94% → 12%</b>',
+    'deployctl rollback → <b>6 pods back on v2.13</b>',
+    '# alert → OK → <b>550 s</b> · 270 s · 12%',
+  ];
+  const root = document.getElementById('w'), pane = document.getElementById('pane');
+  const cap = document.getElementById('cap'), count = document.getElementById('count');
+  const bNext = document.getElementById('next'), bBack = document.getElementById('back'), bReplay = document.getElementById('replay');
+  let step = 0, started = false;
+
+  function reveal(s) {
+    document.querySelectorAll('[data-at]').forEach(el => {
+      const at = +el.dataset.at, on = at <= s;
+      el.style.transitionDelay = (on && at === s) ? (el.dataset.delay || '0') + 's' : '0s';
+      el.classList.toggle('on', on);
+    });
+  }
+  function go(s) {
+    s = Math.max(0, Math.min(TOTAL, s));
+    step = s;
+    reveal(s);
+    pane.classList.toggle('done', s >= 6);
+    cap.innerHTML = CAPTIONS[s]; count.textContent = s + ' / ' + TOTAL;
+    bBack.disabled = s === 0; bNext.disabled = s === TOTAL;
+  }
+  bNext.addEventListener('click', e => { e.stopPropagation(); go(step + 1); });
+  bBack.addEventListener('click', e => { e.stopPropagation(); go(step - 1); });
+  bReplay.addEventListener('click', e => { e.stopPropagation(); go(0); setTimeout(() => go(1), 250); });
+  pane.addEventListener('click', () => { if (step < TOTAL) go(step + 1); });
+  root.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(step + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); go(step - 1); }
+  });
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver((es, io) => { if (es.some(e => e.isIntersecting) && !started) { started = true; io.disconnect(); setTimeout(() => { if (step === 0) go(1); }, 350); } }, { threshold: 0.35 }).observe(root);
+  } else { setTimeout(() => go(1), 600); }
+  go(0);
+  const q = new URLSearchParams(location.search).get('step');
+  if (q !== null) { started = true; go(+q); }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+
+# ---- secrets & environment ----
+.env
+.env.*
+!.env.example
+*.pfx
+*.key
+*.pem
+secrets.json
+
+# ---- output: rendered GIFs, snapshots, fetched fonts ----
+# fonts.css embeds third-party fonts (SIL OFL); tools/fetch-fonts.mjs writes it per kit.
+gifs/
+snaps/
+skills/animated-demo-deck/kits/*/deck/fonts.css
+node_modules/
+dist/
+out/
+
+# ---- editor / OS ----
+.vs/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Private leak-scan term lists: their values ARE the disclosure. Never commit.
+ci/leak-scan.private
+ci/leak-scan.private-cs

@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Board widget: the checkout slowdown</title>
+<style>
+/* Board widget skeleton: the whiteboard look as a reader-paced, responsive widget for a blog or docs page.
+   Self-contained (system handwriting fallbacks, no network). Each step reveals [data-at="N"] elements; strokes
+   draw with stroke-dashoffset, marker highlights grow, struck lines get struck. Same controls as every kit widget:
+   Next / Back / Replay, arrow keys, click the board, ?step=N, plays step 1 when scrolled into view.
+   The example is made up: every name, time and number is an example. */
+:root{
+  --paper:#f6f1e3;--paper2:#fffdf6;--grid:rgba(60,50,30,.075);--ink:#26241f;--ink2:#4a463d;--pencil:#7a766b;--faint:#b8b3a5;
+  --blue:#2458d6;--red:#d33a2f;--green:#2f8f4e;--amber:#d9930d;--note:#fff3a8;--note-pink:#ffd3dc;--note-blue:#cfe6ff;--note-green:#d8f5d0;
+  --hand:"Segoe Print","Bradley Hand","Comic Sans MS","Chalkboard SE",cursive;--sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,Consolas,"SF Mono",Menlo,monospace;--sketch:255px 15px 225px 15px/15px 225px 15px 255px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--hand);-webkit-text-size-adjust:100%}
+.w{display:flex;flex-direction:column;min-height:100vh;outline:none;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:32px 32px}
+.stage{flex:1;padding:18px 18px 10px;display:flex;flex-direction:column;gap:16px;cursor:pointer}
+.kick{font:400 12px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--pencil)}
+h1{margin:6px 0 0;font:700 clamp(22px,3.4vw,34px)/1.1 var(--hand);letter-spacing:-.01em}
+.sub{margin:6px 0 0;font:400 clamp(13px,1.6vw,16px)/1.4 var(--hand);color:var(--ink2)}
+.row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:stretch}
+.box{border:2px solid var(--ink);border-radius:var(--sketch);background:rgba(255,253,246,.8);padding:12px 14px;font:400 14px/1.35 var(--hand)}
+.box h3{margin:0 0 4px;font:700 17px/1.15 var(--hand)}
+.box.blue{border-color:var(--blue)}
+.box.red{border-color:var(--red)}
+.num{display:inline-grid;place-items:center;width:24px;height:24px;border:2px solid var(--ink);border-radius:50%;font:700 12px/1 var(--hand);margin-right:6px}
+.notes{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.note{background:var(--note);padding:14px 14px 16px;box-shadow:1px 5px 12px rgba(40,30,0,.15);font:400 14px/1.35 var(--hand);transform:rotate(var(--tilt,-1.2deg));position:relative}
+.note::before{content:'';position:absolute;left:50%;top:-10px;width:70px;height:20px;margin-left:-35px;background:rgba(255,255,255,.5);border:1px solid rgba(0,0,0,.07);transform:rotate(-2deg)}
+.note.pink{background:var(--note-pink)}.note.blue{background:var(--note-blue)}.note.green{background:var(--note-green)}
+.note .nt{font:700 16px/1.1 var(--hand);margin-bottom:4px}
+.mono{font:500 12px/1.3 var(--mono);background:rgba(255,255,255,.75);border:1px solid rgba(0,0,0,.12);border-radius:5px;padding:1px 5px}
+.lines{position:relative;height:28px;margin:-6px 0}
+.lines svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.ink{fill:none;stroke:var(--ink);stroke-width:2.2;stroke-linecap:round;stroke-dasharray:400;stroke-dashoffset:400;transition:stroke-dashoffset .9s ease}
+.ink.red{stroke:var(--red)}.ink.blue{stroke:var(--blue)}
+.ink.on{stroke-dashoffset:0}
+.mark{background-image:linear-gradient(transparent 14%,rgba(255,222,0,.55) 14%,rgba(255,222,0,.55) 86%,transparent 86%);background-repeat:no-repeat;background-size:0% 100%;transition:background-size .8s ease}
+.mark.on{background-size:100% 100%}
+.strike{position:relative}
+.strike::after{content:'';position:absolute;left:-3px;right:-3px;top:52%;height:2px;background:var(--red);transform:scaleX(0);transform-origin:left;transition:transform .5s ease}
+.strike.on::after{transform:scaleX(1)}
+.printout{background:#fff;padding:12px 14px;box-shadow:0 6px 18px rgba(40,30,0,.16);font:400 13.5px/1.45 var(--sans);transform:rotate(.4deg);position:relative}
+.printout::before{content:'';position:absolute;left:18px;top:-10px;width:80px;height:20px;background:rgba(255,244,200,.65);transform:rotate(-5deg)}
+.printout b{font-weight:800}
+.printout .pl{display:block;margin-top:6px;font:400 12px/1 var(--hand);color:var(--pencil)}
+.corr{font:400 16px/1 var(--hand);color:var(--red);margin-left:8px}
+
+[data-at]{opacity:0;transform:translateY(8px) rotate(var(--tilt,0deg));transition:opacity .45s ease,transform .45s ease}
+[data-at].on{opacity:1;transform:rotate(var(--tilt,0deg))}
+.note[data-at]{transform:translateY(8px) scale(.94) rotate(var(--tilt,-1.2deg))}
+.note[data-at].on{transform:rotate(var(--tilt,-1.2deg))}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+.bar{position:sticky;bottom:0;display:flex;align-items:center;gap:8px;padding:10px 16px;background:rgba(246,241,227,.95);border-top:2px solid var(--ink)}
+.bar button{font:700 13px/1 var(--sans);padding:9px 14px;border-radius:var(--sketch);border:2px solid var(--ink);background:var(--paper2);color:var(--ink);cursor:pointer}
+.bar button.primary{border-color:var(--blue);color:var(--blue)}
+.bar button:disabled{opacity:.4;cursor:default}
+.bar .count{font:600 12px/1 var(--mono);color:var(--pencil);min-width:56px;text-align:center}
+.bar .cap{flex:1;font:400 14px/1.35 var(--hand);color:var(--ink2);min-height:1.35em}
+.bar .cap b{font-weight:400;color:var(--blue)}
+.hint{font:400 11px/1 var(--sans);color:var(--faint)}
+@media (max-width:760px){.row{grid-template-columns:1fr 1fr}.lines{display:none}}
+@media (max-width:600px){.notes{grid-template-columns:1fr}}
+@media (max-width:460px){.row{grid-template-columns:1fr}.stage{padding:14px 12px 8px}.bar{flex-wrap:wrap}.bar .cap{flex-basis:100%;order:5}.hint{display:none}}
+</style>
+</head>
+<body>
+<div class="w" id="w" tabindex="0" aria-label="Interactive whiteboard: the checkout slowdown, step by step">
+  <div class="stage" id="stage">
+    <header>
+      <div class="kick">Board widget · example</div>
+      <h1>A deploy, then a slow checkout</h1>
+      <p class="sub">The chain, the evidence, the cause and the fix. Click <b>Next</b>, the board, or use the arrow keys.</p>
+    </header>
+    <div class="row">
+      <div class="box" data-at="1" style="--tilt:-.6deg"><h3><span class="num">1</span>v2.14 out</h3>09:58 UTC</div>
+      <div class="box" data-at="1" data-delay=".25" style="--tilt:.5deg"><h3><span class="num">2</span>cache misses</h3>almost every one</div>
+      <div class="box" data-at="1" data-delay=".5" style="--tilt:-.4deg"><h3><span class="num">3</span>database reads</h3>every request</div>
+      <div class="box red" data-at="1" data-delay=".75" style="--tilt:.7deg"><h3><span class="num">4</span>p95 2,400 ms</h3>10:02 UTC</div>
+    </div>
+    <div class="lines" aria-hidden="true"><svg viewBox="0 0 1000 28" preserveAspectRatio="none">
+      <path class="ink red" data-draw="2" d="M120,14 C300,4 520,24 880,12"/></svg></div>
+    <p class="sub" data-at="2">Why it chains: the new key is <span class="mark" data-mark="2">cart plus session</span>, so no two visitors ever share an entry.</p>
+    <div class="printout" data-at="3"><b>[HIGH] checkout-api p95 latency 2,400 ms</b> (threshold 800 ms) · <span class="strike" data-strike="3">error rate rising</span><span class="corr">0.2 %, flat</span> ⋯
+      <span class="pl">alertbot · 10:02:40 UTC · abridged where ⋯</span></div>
+    <div class="notes">
+      <div class="note blue" data-at="4" style="--tilt:-1.6deg"><div class="nt" style="color:var(--blue)">before · v2.13</div><span class="mono">cart:{cartId}</span> · one entry, shared</div>
+      <div class="note pink" data-at="4" data-delay=".2" style="--tilt:1.2deg"><div class="nt" style="color:var(--red)">after · v2.14</div><span class="mono">cart:{cartId}:{sessionId}</span></div>
+      <div class="note" data-at="4" data-delay=".4" style="--tilt:-.8deg"><div class="nt">hit rate</div><span class="strike" data-strike="4">94 %</span> → 12 %</div>
+    </div>
+    <div class="notes">
+      <div class="note green" data-at="5" style="--tilt:1deg"><div class="nt" style="color:var(--green)">rollback · v2.13 ✓</div>10:06, and 180 ms by 10:11</div>
+      <div class="note green" data-at="5" data-delay=".2" style="--tilt:-1deg"><div class="nt" style="color:var(--green)">alert to recovery</div>9 min 10 s</div>
+      <div class="box" data-at="5" data-delay=".4" style="border-style:dashed;--tilt:.4deg"><h3>later</h3>review every cache-key change</div>
+    </div>
+  </div>
+  <div class="bar">
+    <button id="back" aria-label="Back">‹ Back</button>
+    <button id="next" class="primary" aria-label="Next">Next ›</button>
+    <button id="replay" aria-label="Replay">↻</button>
+    <span class="count" id="count">0 / 5</span>
+    <span class="cap" id="cap">Click <b>Next</b> to step through.</span>
+    <span class="hint">← → keys work too</span>
+  </div>
+</div>
+<script>
+(function(){
+  'use strict';
+  const TOTAL = 5;
+  const CAPTIONS = [
+    'Click <b>Next</b> to step through.',
+    'new key → misses → reads → <b>slow</b>',
+    'the session id made <b>every key unique</b>',
+    'error rate rising? no: <b>0.2 %, flat</b>',
+    'hit rate <b>94 % → 12 %</b>',
+    'rolled back; <b>9 min 10 s</b> alert to recovery',
+  ];
+  const root = document.getElementById('w'), stage = document.getElementById('stage');
+  const cap = document.getElementById('cap'), count = document.getElementById('count');
+  const bNext = document.getElementById('next'), bBack = document.getElementById('back'), bReplay = document.getElementById('replay');
+  let step = 0, started = false;
+  const toggle = (attr, s) => document.querySelectorAll('[' + attr + ']').forEach(el => el.classList.toggle('on', +el.getAttribute(attr) <= s));
+  function reveal(s) {
+    document.querySelectorAll('[data-at]').forEach(el => {
+      const at = +el.dataset.at, on = at <= s;
+      el.style.transitionDelay = (on && at === s) ? (el.dataset.delay || '0') + 's' : '0s';
+      el.classList.toggle('on', on);
+    });
+    toggle('data-draw', s); toggle('data-mark', s); toggle('data-strike', s);
+  }
+  function go(s) {
+    s = Math.max(0, Math.min(TOTAL, s));
+    step = s; reveal(s);
+    cap.innerHTML = CAPTIONS[s]; count.textContent = s + ' / ' + TOTAL;
+    bBack.disabled = s === 0; bNext.disabled = s === TOTAL;
+  }
+  bNext.addEventListener('click', e => { e.stopPropagation(); go(step + 1); });
+  bBack.addEventListener('click', e => { e.stopPropagation(); go(step - 1); });
+  bReplay.addEventListener('click', e => { e.stopPropagation(); go(0); setTimeout(() => go(1), 250); });
+  stage.addEventListener('click', () => { if (step < TOTAL) go(step + 1); });
+  root.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(step + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); go(step - 1); }
+  });
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver((es, io) => { if (es.some(e => e.isIntersecting) && !started) { started = true; io.disconnect(); setTimeout(() => { if (step === 0) go(1); }, 350); } }, { threshold: 0.35 }).observe(root);
+  } else { setTimeout(() => go(1), 600); }
+  go(0);
+  const q = new URLSearchParams(location.search).get('step');
+  if (q !== null) { started = true; go(+q); }
+})();
+</script>
+</body>
+</html>

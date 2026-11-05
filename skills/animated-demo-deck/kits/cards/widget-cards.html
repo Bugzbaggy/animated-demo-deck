@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cards widget: the checkout slowdown</title>
+<style>
+/* Cards widget skeleton: the light card look of the Cards kit as a reader-paced, responsive widget for a blog or
+   docs page. Self-contained, system fonts, no network. Each step reveals [data-at="N"]; a dot travels along the
+   step cards; marker highlights grow. Same controls as every kit widget: Next / Back / Replay, arrow keys, click
+   the stage, ?step=N, plays step 1 when scrolled into view. The example is made up: every name, time and number
+   is an example. */
+:root{
+  --bg:#f4f5f9;--card:#fff;--line:#e3e6ef;--line2:#d3d8e6;--ink:#1b2141;--ink2:#3d4466;--muted:#767c98;--faint:#a6abc0;
+  --blue:#3d5af1;--blue-soft:#e9edff;--blue-ink:#2a3fb8;--green:#13955f;--green-soft:#e2f5eb;--green-ink:#0c6d45;
+  --amber-soft:#fdf1d8;--amber-ink:#85560a;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;--mono:ui-monospace,Consolas,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-text-size-adjust:100%}
+.w{display:flex;flex-direction:column;min-height:100vh;outline:none}
+.stage{flex:1;padding:16px 16px 8px;display:flex;flex-direction:column;gap:14px;cursor:pointer}
+.kicker{font:700 11px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--blue)}
+h1{margin:6px 0 0;font:800 clamp(18px,2.6vw,26px)/1.15 var(--sans);letter-spacing:-.01em}
+.sub{margin:4px 0 0;font:400 clamp(13px,1.5vw,15px)/1.35 var(--sans);color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 2px rgba(23,28,64,.04),0 6px 18px rgba(23,28,64,.05)}
+.sk{display:grid;grid-template-columns:30px 1fr;gap:10px;padding:12px 14px}
+.sk .av{width:30px;height:30px;border-radius:7px;background:linear-gradient(135deg,#14b8a6,#0f766e);color:#fff;display:grid;place-items:center;font:900 11px/1 var(--sans)}
+.sk .nm{font:800 13px/1.3 var(--sans)}.sk .nm small{font-weight:400;color:#616061;margin-left:6px}
+.sk .tx{font:400 13px/1.45 var(--sans)}
+.mark{background-image:linear-gradient(transparent 58%,rgba(255,206,61,.62) 58%);background-repeat:no-repeat;background-size:0% 100%;transition:background-size .8s ease}
+.mark.on{background-size:100% 100%}
+.path{position:relative;padding-top:26px}
+.track{position:absolute;left:12%;right:12%;top:12px;height:2px;background:var(--line2)}
+.dot{position:absolute;top:4px;width:18px;height:18px;margin-left:-9px;border-radius:50%;background:var(--blue);border:3px solid #fff;box-shadow:0 0 0 4px rgba(61,90,241,.22);left:12.5%;opacity:0;transition:left .8s cubic-bezier(.45,0,.2,1),opacity .3s}
+.dot.show{opacity:1}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.step{padding:12px 14px;transition:border-color .3s,box-shadow .3s}
+.step h3{margin:6px 0 3px;font:800 14px/1.2 var(--sans)}
+.step p{margin:0;font:400 12.5px/1.4 var(--sans);color:var(--ink2)}
+.step.lit{border-color:var(--blue);box-shadow:0 0 0 3px rgba(61,90,241,.15)}
+.num{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--blue);color:#fff;font:800 11px/1 var(--sans)}
+.callout{padding:12px 14px;border-radius:12px;background:var(--green-soft);border:1px solid #bfe6d0}
+.callout .ct{font:800 13px/1.3 var(--sans);color:var(--green-ink)}
+.callout .cd{margin-top:3px;font:400 12.5px/1.4 var(--sans);color:var(--ink2)}
+.callout.amber{background:var(--amber-soft);border-color:#f0d9a8}.callout.amber .ct{color:var(--amber-ink)}
+.outcome{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
+.outcome .ol{font:800 clamp(15px,2vw,19px)/1.2 var(--sans);margin-right:4px}
+.chip{display:inline-flex;align-items:center;padding:5px 11px;border-radius:999px;font:600 12px/1.2 var(--sans);background:var(--blue-soft);color:var(--blue-ink);white-space:nowrap}
+.chip.green{background:var(--green-soft);color:var(--green-ink)}.chip.amber{background:var(--amber-soft);color:var(--amber-ink)}
+.mono{font-family:var(--mono);font-size:.92em}
+
+[data-at]{opacity:0;transform:translateY(10px);transition:opacity .45s ease,transform .45s ease}
+[data-at].on{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+.bar{position:sticky;bottom:0;display:flex;align-items:center;gap:8px;padding:10px 16px;background:rgba(244,245,249,.92);backdrop-filter:blur(6px);border-top:1px solid var(--line)}
+.bar button{font:700 13px/1 var(--sans);padding:9px 14px;border-radius:9px;border:1px solid var(--line2);background:#fff;color:var(--ink);cursor:pointer}
+.bar button.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.bar button:disabled{opacity:.4;cursor:default}
+.bar .count{font:600 12px/1 var(--mono);color:var(--muted);min-width:56px;text-align:center}
+.bar .cap{flex:1;font:400 13px/1.35 var(--sans);color:var(--ink2);min-height:1.35em}
+.bar .cap b{color:var(--ink)}
+.hint{font:400 11px/1 var(--sans);color:var(--faint)}
+@media (max-width:760px){.steps{grid-template-columns:1fr 1fr}.track,.dot{display:none}.path{padding-top:0}}
+@media (max-width:460px){.steps{grid-template-columns:1fr}.stage{padding:12px 12px 6px}.bar{flex-wrap:wrap}.bar .cap{flex-basis:100%;order:5}.hint{display:none}}
+</style>
+</head>
+<body>
+<div class="w" id="w" tabindex="0" aria-label="Interactive diagram: the checkout slowdown, step by step">
+  <div class="stage" id="stage">
+    <header>
+      <div class="kicker">Cards widget · example</div>
+      <h1>The checkout slowdown</h1>
+      <p class="sub">One alert, one thread, one rollback. Click <b>Next</b> or the cards.</p>
+    </header>
+    <div class="card sk" data-at="1"><div class="av">AB</div><div><div class="nm">alertbot <small>10:02 AM UTC</small></div>
+      <div class="tx">[HIGH] <span class="mono">checkout-api</span> <span class="mark" data-mark="1">p95 latency 2,400 ms</span> (threshold 800 ms) · error rate rising</div></div></div>
+    <div class="path">
+      <div class="track" data-at="2"></div>
+      <div class="dot" id="dot"></div>
+      <div class="steps">
+        <div class="card step" data-at="2" data-n="1"><span class="num">1</span><h3>The alert</h3><p>10:02:40. Latency over the threshold.</p></div>
+        <div class="card step" data-at="2" data-delay=".12" data-n="2"><span class="num">2</span><h3>The first lead</h3><p>10:04:05. Cache hit rate 94% → 12% at the deploy minute.</p></div>
+        <div class="card step" data-at="2" data-delay=".24" data-n="3"><span class="num">3</span><h3>The cause</h3><p>v2.14 put the session id into the cart cache key.</p></div>
+        <div class="card step" data-at="2" data-delay=".36" data-n="4"><span class="num">4</span><h3>The fix</h3><p>Rolled back to v2.13; 180 ms by 10:11.</p></div>
+      </div>
+    </div>
+    <div class="callout amber" data-at="4"><div class="ct">The alert’s wording, not a finding</div><div class="cd">Errors stayed at 0.2 % all morning; nobody had measured “error rate rising”.</div></div>
+    <div class="outcome" data-at="5"><span class="ol">Alert to recovery: 9 min 10 s</span><span class="chip green">first lead in 85 s</span><span class="chip green">rolled back</span><span class="chip amber">guard: later</span></div>
+  </div>
+  <div class="bar">
+    <button id="back" aria-label="Back">‹ Back</button>
+    <button id="next" class="primary" aria-label="Next">Next ›</button>
+    <button id="replay" aria-label="Replay">↻</button>
+    <span class="count" id="count">0 / 5</span>
+    <span class="cap" id="cap">Click <b>Next</b> to step through.</span>
+    <span class="hint">← → keys work too</span>
+  </div>
+</div>
+<script>
+(function(){
+  'use strict';
+  const TOTAL = 5;
+  const CAPTIONS = [
+    'Click <b>Next</b> to step through.',
+    'It starts with an alert at 10:02: <b>p95 latency 2,400 ms</b>.',
+    'The thread, in <b>four steps</b>, in the order they were posted.',
+    '<b>The on-call engineer replies at 10:04</b>, 85 seconds after the alert.',
+    'The alert said <b>“error rate rising”</b>; only the latency was measured.',
+    'From alert to recovery: <b>9 min 10 s</b>, and a guard still to build.',
+  ];
+  const LIT = { 2: 1, 3: 2, 4: 3, 5: 4 };
+  const root = document.getElementById('w'), stage = document.getElementById('stage'), dot = document.getElementById('dot');
+  const steps = [...document.querySelectorAll('.step')];
+  const cap = document.getElementById('cap'), count = document.getElementById('count');
+  const bNext = document.getElementById('next'), bBack = document.getElementById('back'), bReplay = document.getElementById('replay');
+  let step = 0, started = false;
+  function reveal(s) {
+    document.querySelectorAll('[data-at]').forEach(el => {
+      const at = +el.dataset.at, on = at <= s;
+      el.style.transitionDelay = (on && at === s) ? (el.dataset.delay || '0') + 's' : '0s';
+      el.classList.toggle('on', on);
+    });
+    document.querySelectorAll('[data-mark]').forEach(el => el.classList.toggle('on', +el.dataset.mark <= s));
+    const n = LIT[s] || 0;
+    steps.forEach((el, i) => el.classList.toggle('lit', i + 1 === n));
+    dot.classList.toggle('show', n > 0);
+    if (n) dot.style.left = (12.5 + (n - 1) * 25) + '%';
+  }
+  function go(s) {
+    s = Math.max(0, Math.min(TOTAL, s));
+    step = s; reveal(s);
+    cap.innerHTML = CAPTIONS[s]; count.textContent = s + ' / ' + TOTAL;
+    bBack.disabled = s === 0; bNext.disabled = s === TOTAL;
+  }
+  bNext.addEventListener('click', e => { e.stopPropagation(); go(step + 1); });
+  bBack.addEventListener('click', e => { e.stopPropagation(); go(step - 1); });
+  bReplay.addEventListener('click', e => { e.stopPropagation(); go(0); setTimeout(() => go(1), 250); });
+  stage.addEventListener('click', () => { if (step < TOTAL) go(step + 1); });
+  root.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(step + 1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); go(step - 1); }
+  });
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver((es, io) => { if (es.some(e => e.isIntersecting) && !started) { started = true; io.disconnect(); setTimeout(() => { if (step === 0) go(1); }, 350); } }, { threshold: 0.35 }).observe(root);
+  } else { setTimeout(() => go(1), 600); }
+  go(0);
+  const q = new URLSearchParams(location.search).get('step');
+  if (q !== null) { started = true; go(+q); }
+})();
+</script>
+</body>
+</html>

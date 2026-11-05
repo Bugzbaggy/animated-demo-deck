@@ -1,0 +1,70 @@
+{
+  "scenes": [
+    {
+      "n": 1,
+      "id": "what",
+      "title": "A deploy, then a slow checkout",
+      "beats": [
+        {
+          "id": "fly-in",
+          "dur": 3.4,
+          "hold": 4.6
+        },
+        {
+          "id": "chain",
+          "dur": 4.2,
+          "hold": 8.69
+        },
+        {
+          "id": "claim",
+          "dur": 4.6,
+          "hold": 8.73
+        }
+      ]
+    },
+    {
+      "n": 2,
+      "id": "why",
+      "title": "One key per session",
+      "beats": [
+        {
+          "id": "hop",
+          "dur": 3.8,
+          "hold": 5.53
+        },
+        {
+          "id": "circle",
+          "dur": 3.6,
+          "hold": 4.4
+        },
+        {
+          "id": "notes",
+          "dur": 3.6,
+          "hold": 4.4
+        }
+      ]
+    },
+    {
+      "n": 3,
+      "id": "fix",
+      "title": "Roll back, then guard",
+      "beats": [
+        {
+          "id": "hop",
+          "dur": 4,
+          "hold": 7.11
+        },
+        {
+          "id": "later",
+          "dur": 3.4,
+          "hold": 5.93
+        },
+        {
+          "id": "pull-back",
+          "dur": 3,
+          "hold": 5
+        }
+      ]
+    }
+  ]
+}

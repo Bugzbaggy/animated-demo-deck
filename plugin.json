@@ -1,0 +1,13 @@
+{
+  "name": "animated-demo-deck",
+  "description": "Animated demo decks for Claude Code in four kinds (cards, console, board, dashboard), each with its own look, motion and material. One source gives a click-paced HTML deck with a presenter view, play-once 1920x1080 GIFs for Google Slides, a spoken SCRIPT.md with target times, and a reader-paced widget for a blog or docs page.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Renz Bagasbas",
+    "email": "92191389+Bugzbaggy@users.noreply.github.com",
+    "url": "https://github.com/Bugzbaggy"
+  },
+  "homepage": "https://github.com/Bugzbaggy/animated-demo-deck",
+  "license": "MIT",
+  "skills": ["./skills/animated-demo-deck"]
+}

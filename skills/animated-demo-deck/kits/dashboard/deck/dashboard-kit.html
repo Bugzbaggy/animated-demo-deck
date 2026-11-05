@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard kit</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+/* ------------------------------------------------------------------ Dashboard kit
+   One ops screen whose tiles update as a timeline needle moves. Dark navy, Grafana-like tiles,
+   big tabular numbers, sparklines, gauges, status pills, a log tile, a rail across the bottom
+   with a needle and event markers, alert ping rings. See deck/scenes.js for the helpers. */
+:root {
+  --bg: #0f172a; --bg-2: #0b1222; --panel: #16213a; --panel-2: #1b2745; --line: #263554; --line-2: #324468;
+  --ink: #e6ecf7; --ink-2: #b8c4dc; --muted: #7f8db0; --faint: #4e5c80;
+  --ok: #22c55e; --ok-soft: rgba(34, 197, 94, .16); --warn: #f59e0b; --warn-soft: rgba(245, 158, 11, .16);
+  --crit: #ef4444; --crit-soft: rgba(239, 68, 68, .16); --info: #38bdf8; --info-soft: rgba(56, 189, 248, .16);
+  --accent: #60a5fa; --accent-soft: rgba(96, 165, 250, .18); --purple: #a78bfa;
+  --sans: 'Inter', 'Segoe UI', system-ui, sans-serif; --mono: 'JetBrains Mono', Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #05080f; overflow: hidden; }
+#viewport { position: fixed; inset: 0; display: grid; place-items: center; cursor: pointer; }
+#stage { width: 1920px; height: 1080px; flex: none; position: relative; overflow: hidden; color: var(--ink); font-family: var(--sans);
+  background: radial-gradient(1200px 700px at 70% -10%, #172446 0%, var(--bg) 55%, var(--bg-2) 100%); }
+.scene { position: absolute; inset: 0; display: none; }
+.scene.active { display: block; }
+.abs { position: absolute; }
+body.blank #stage { visibility: hidden; }
+#help { display: none; position: fixed; right: 18px; bottom: 18px; z-index: 9; background: rgba(22, 33, 58, .96); color: var(--ink);
+  font: 15px/1.7 var(--sans); padding: 14px 18px; border-radius: 12px; border: 1px solid var(--line-2); }
+body.help #help { display: block; }
+#help b { color: var(--accent); font-family: var(--mono); }
+.mono { font-family: var(--mono); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* --------------------------------------------------------------- top bar */
+.topbar { position: absolute; left: 0; right: 0; top: 0; height: 58px; display: flex; align-items: center; gap: 24px; padding: 0 40px;
+  background: rgba(11, 18, 34, .9); border-bottom: 1px solid var(--line); }
+.topbar .tb-name { display: flex; align-items: center; gap: 12px; font: 700 20px/1 var(--sans); letter-spacing: -.01em; }
+.topbar .tb-name .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 4px var(--ok-soft); }
+.topbar .tb-sub { font: 500 15px/1 var(--sans); color: var(--muted); }
+.topbar .tb-range { margin-left: auto; font: 500 15px/1 var(--mono); color: var(--ink-2); padding: 8px 14px; border: 1px solid var(--line-2); border-radius: 8px; }
+.topbar .tb-clock { font: 600 22px/1 var(--mono); color: var(--accent); font-variant-numeric: tabular-nums; min-width: 110px; text-align: right; }
+.kicker { font: 700 12px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+.hd { position: absolute; left: 40px; top: 84px; }
+.hd h1 { margin: 6px 0 0; font: 800 38px/1.1 var(--sans); letter-spacing: -.02em; }
+.hd .sub { margin: 8px 0 0; font: 400 18px/1.35 var(--sans); color: var(--muted); }
+
+/* --------------------------------------------------------------- tiles */
+.tile { position: absolute; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 10px 30px rgba(0, 0, 0, .25); overflow: hidden; }
+.tile .tt { font: 700 12px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 10px; }
+.tile .tt .pill { margin-left: auto; }
+.tile::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--line-2); border-radius: 12px 0 0 12px; }
+.tile.ok::before { background: var(--ok); } .tile.warn::before { background: var(--warn); } .tile.crit::before { background: var(--crit); } .tile.info::before { background: var(--info); }
+.tile.ok { box-shadow: 0 0 0 1px rgba(34, 197, 94, .25), 0 10px 30px rgba(0, 0, 0, .25); }
+.tile.warn { box-shadow: 0 0 0 1px rgba(245, 158, 11, .35), 0 10px 30px rgba(0, 0, 0, .25); background: linear-gradient(180deg, rgba(245, 158, 11, .08), transparent 60%), var(--panel); }
+.tile.crit { box-shadow: 0 0 0 1px rgba(239, 68, 68, .45), 0 0 40px rgba(239, 68, 68, .18), 0 10px 30px rgba(0, 0, 0, .25); background: linear-gradient(180deg, rgba(239, 68, 68, .12), transparent 60%), var(--panel); }
+.tile.dim { opacity: .55; }
+.tile .body { margin-top: 12px; }
+.tile .row { display: flex; align-items: flex-end; gap: 18px; }
+.tile .foot { position: absolute; left: 20px; right: 20px; bottom: 12px; font: 400 13px/1.3 var(--sans); color: var(--muted); }
+
+/* node tiles (a fleet) */
+.node .nm { font: 700 22px/1 var(--mono); color: var(--ink); margin-top: 10px; }
+.node .meta { margin-top: 10px; display: flex; gap: 14px; font: 500 14px/1 var(--sans); color: var(--ink-2); }
+.node .meta b { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* KPI: big number, unit, sub line */
+.kpi { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; }
+.kpi .kv { font: 800 64px/1 var(--sans); letter-spacing: -.03em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.kpi .kv.ok { color: var(--ok); } .kpi .kv.warn { color: var(--warn); } .kpi .kv.crit { color: var(--crit); } .kpi .kv.info { color: var(--info); } .kpi .kv.accent { color: var(--accent); }
+.kpi.sm .kv { font-size: 44px; }
+.kpi .ku { font: 600 22px/1 var(--sans); color: var(--muted); }
+.kpi .ks { flex-basis: 100%; margin-top: 8px; font: 400 14px/1.35 var(--sans); color: var(--muted); }
+
+/* pills */
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 6px; font: 700 11.5px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase;
+  background: var(--line); color: var(--ink-2); white-space: nowrap; }
+.pill::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); } .pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.crit { background: var(--crit-soft); color: var(--crit); } .pill.info { background: var(--info-soft); color: var(--info); }
+.pill.off { background: var(--line); color: var(--muted); }
+.pill.lg { font-size: 13px; padding: 7px 12px; }
+
+/* sparkline: polyline.draw is drawn by A.draw; .fill is the faint area under it */
+svg.spark { display: block; overflow: visible; }
+svg.spark polyline { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+svg.spark.ok polyline { stroke: var(--ok); } svg.spark.warn polyline { stroke: var(--warn); } svg.spark.crit polyline { stroke: var(--crit); } svg.spark.info polyline { stroke: var(--info); }
+svg.spark .fill { fill: var(--accent); opacity: .12; }
+svg.spark.ok .fill { fill: var(--ok); } svg.spark.warn .fill { fill: var(--warn); } svg.spark.crit .fill { fill: var(--crit); }
+svg.spark .last { fill: var(--accent); } svg.spark.ok .last { fill: var(--ok); } svg.spark.warn .last { fill: var(--warn); } svg.spark.crit .last { fill: var(--crit); }
+
+/* gauge bar: width follows --fill (0..1); A.vars animates it */
+.gauge { position: relative; height: 12px; border-radius: 6px; background: var(--line); overflow: hidden; }
+.gauge .gf { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--fill, 0) * 100%); border-radius: 6px; background: var(--accent); }
+.gauge.ok .gf { background: var(--ok); } .gauge.warn .gf { background: var(--warn); } .gauge.crit .gf { background: var(--crit); } .gauge.info .gf { background: var(--info); }
+.gauge.lg { height: 18px; border-radius: 9px; } .gauge.lg .gf { border-radius: 9px; }
+.gl { display: flex; justify-content: space-between; margin-top: 6px; font: 500 13px/1 var(--sans); color: var(--muted); font-variant-numeric: tabular-nums; }
+/* arc gauge: a 3/4 circle, stroke-dashoffset follows --fill */
+svg.arc { display: block; overflow: visible; }
+svg.arc .bg { fill: none; stroke: var(--line); stroke-width: 12; stroke-linecap: round; }
+svg.arc .fg { fill: none; stroke: var(--accent); stroke-width: 12; stroke-linecap: round;
+  stroke-dasharray: var(--arc) 1000; stroke-dashoffset: 0; transform-origin: center;
+  stroke-dasharray: calc(var(--arc) * var(--fill, 0)) 1000; }
+svg.arc.ok .fg { stroke: var(--ok); } svg.arc.warn .fg { stroke: var(--warn); } svg.arc.crit .fg { stroke: var(--crit); }
+.arcwrap { position: relative; display: inline-block; }
+.arcwrap .av { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-40%); text-align: center; font: 800 34px/1 var(--sans); font-variant-numeric: tabular-nums; }
+.arcwrap .al { position: absolute; left: 0; right: 0; bottom: -4px; text-align: center; font: 500 12px/1 var(--sans); color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+
+/* log tile */
+.log { margin-top: 10px; font: 400 15px/1.55 var(--mono); color: var(--ink-2); }
+.log .ln { display: flex; gap: 12px; white-space: nowrap; }
+.log .ts { color: var(--faint); flex: none; } .log .lv { flex: none; width: 52px; font-weight: 700; }
+.log .lv.INFO { color: var(--info); } .log .lv.WARN { color: var(--warn); } .log .lv.CRIT { color: var(--crit); } .log .lv.OK { color: var(--ok); }
+.log .tx { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; } .log .tx b { color: var(--ink); font-weight: 600; }
+.log .cur { color: var(--accent); }
+
+/* rail across the bottom: a line, time ticks, event markers with ping rings, the needle */
+.rail { position: absolute; left: 0; right: 0; top: 968px; height: 80px; }
+.rail .rl { position: absolute; left: 120px; right: 120px; top: 30px; height: 2px; background: var(--line-2); }
+.rail .tick { position: absolute; top: 24px; transform: translateX(-50%); text-align: center; }
+.rail .tick i { display: block; width: 2px; height: 14px; background: var(--faint); margin: 0 auto; }
+.rail .tick span { display: block; margin-top: 6px; font: 500 13px/1 var(--mono); color: var(--muted); }
+.rail .ev { position: absolute; top: 20px; transform: translateX(-50%); text-align: center; }
+.rail .ev i { display: block; width: 22px; height: 22px; border-radius: 50%; background: var(--panel); border: 3px solid var(--accent); margin: 0 auto; position: relative; z-index: 2; }
+.rail .ev.ok i { border-color: var(--ok); } .rail .ev.warn i { border-color: var(--warn); } .rail .ev.crit i { border-color: var(--crit); }
+.rail .ev span { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 8px; white-space: nowrap; font: 600 14px/1 var(--sans); color: var(--ink-2); padding: 6px 10px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); }
+.rail .ev.ok span { color: var(--ok); } .rail .ev.warn span { color: var(--warn); } .rail .ev.crit span { color: var(--crit); }
+.rail .ev .ping { position: absolute; left: 50%; top: 11px; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; border: 3px solid var(--accent); opacity: 0; pointer-events: none; }
+.rail .ev.ok .ping { border-color: var(--ok); } .rail .ev.warn .ping { border-color: var(--warn); } .rail .ev.crit .ping { border-color: var(--crit); }
+.rail .needle { position: absolute; top: 8px; width: 2px; height: 46px; background: var(--ink); box-shadow: 0 0 12px rgba(230, 236, 247, .6); z-index: 3; }
+.rail .needle .nb { position: absolute; left: 50%; top: -30px; transform: translateX(-50%); padding: 4px 8px; border-radius: 5px; background: var(--ink); color: var(--bg); font: 700 13px/1 var(--mono); white-space: nowrap; }
+/* a free-standing ping ring anywhere (on a tile, a node) */
+.ping.free { position: absolute; width: 40px; height: 40px; border-radius: 50%; border: 3px solid var(--crit); opacity: 0; pointer-events: none; }
+
+/* captions: an annotation strip above the rail */
+.captions { position: absolute; left: 0; right: 0; bottom: 160px; display: grid; justify-items: center; z-index: 6; pointer-events: none; }
+.caption { grid-area: 1 / 1; width: max-content; max-width: 1500px; padding: 12px 22px 12px 26px; font: 400 24px/1.3 var(--sans); color: var(--ink-2); text-align: left;
+  background: rgba(22, 33, 58, .94); border: 1px solid var(--line-2); border-left: 4px solid var(--accent); border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .35); }
+.caption b { color: var(--ink); font-weight: 700; }
+
+/* animation hooks driven by engine.js variables */
+.caret::after { content: '▍'; color: var(--accent); margin-left: 1px; }
+.wipe { clip-path: inset(-4px calc((1 - var(--wipe, 0)) * 100%) -4px -4px); }
+.mark { background-image: linear-gradient(transparent 8%, var(--accent-soft) 8%, var(--accent-soft) 92%, transparent 92%); background-repeat: no-repeat;
+  background-size: calc(var(--hl, 0) * 100%) 100%; -webkit-box-decoration-break: clone; box-decoration-break: clone; border-radius: 3px; }
+.mark.warn { background-image: linear-gradient(transparent 8%, var(--warn-soft) 8%, var(--warn-soft) 92%, transparent 92%); }
+.mark.crit { background-image: linear-gradient(transparent 8%, var(--crit-soft) 8%, var(--crit-soft) 92%, transparent 92%); }
+.draw { stroke-dasharray: var(--len, 3000) calc(var(--len, 3000) * 2); stroke-dashoffset: calc(var(--len, 3000) * (1 - var(--draw, 0))); }  /* gap 2L: no dot from a zero-length dash at the end of an undrawn round-capped stroke */
+.strike { position: relative; }
+.strike::after { content: ''; position: absolute; left: -4px; right: -4px; top: 52%; height: 2.5px; background: var(--crit); transform-origin: left center; transform: scaleX(var(--strike, 0)); }
+svg.overlay { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: visible; pointer-events: none; }
+.chip { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 999px; font: 600 14px/1 var(--sans); background: var(--panel-2); border: 1px solid var(--line-2); color: var(--ink-2); white-space: nowrap; }
+.chip.ok { color: var(--ok); border-color: rgba(34, 197, 94, .35); } .chip.accent { color: var(--accent); border-color: rgba(96, 165, 250, .35); }
+/* --------------------------------------------------------------- the material: event rows, facts, claimed vs measured */
+.elog { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.er { display: grid; grid-template-columns: 96px 170px 74px 1fr; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); font: 500 16px/1.3 var(--sans); color: var(--ink); }
+.er .t { font: 600 15px/1 var(--mono); color: var(--muted); }
+.er .w { display: flex; align-items: center; gap: 8px; font: 600 14px/1.2 var(--sans); color: var(--ink-2); white-space: nowrap; overflow: hidden; }
+.er .x small { display: block; margin-top: 3px; font: 400 13.5px/1.3 var(--sans); color: var(--muted); }
+.er.crit { border-color: rgba(239, 68, 68, .45); } .er.warn { border-color: rgba(245, 158, 11, .4); } .er.ok { border-color: rgba(34, 197, 94, .4); }
+.er.ctx { background: transparent; border-style: dashed; color: var(--ink-2); }
+.quote { font: 700 19px/1.35 var(--sans); color: var(--ink); }
+.quote::before { content: '\201C'; color: var(--accent); margin-right: 2px; } .quote::after { content: '\201D'; color: var(--accent); margin-left: 2px; }
+.quote.sm { font-size: 16px; }
+.facts { display: grid; gap: 10px; margin-top: 12px; }
+.fact { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 4px 16px; padding-bottom: 8px; border-bottom: 1px dashed var(--line-2); }
+.fact:last-child { border-bottom: 0; }
+.fact .fk { font: 500 15px/1.3 var(--sans); color: var(--ink-2); }
+.fact .fv { font: 800 24px/1 var(--sans); color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.fact .fv.crit { color: var(--crit); } .fact .fv.ok { color: var(--ok); } .fact .fv.warn { color: var(--warn); } .fact .fv.accent { color: var(--accent); }
+.fact .fs { grid-column: 1 / -1; font: 400 13px/1.3 var(--sans); color: var(--muted); }
+.vs { display: grid; grid-template-columns: 1fr 200px 380px; column-gap: 18px; margin-top: 10px; }
+.vs > span { padding: 9px 0; border-bottom: 1px dashed var(--line-2); display: flex; align-items: center; }
+.vs .h { font: 700 11px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line-2); }
+.vs .l { font: 500 15.5px/1.3 var(--sans); color: var(--ink-2); }
+.vs .a { font: 800 20px/1.15 var(--sans); color: var(--crit); font-variant-numeric: tabular-nums; }
+.vs .b { font: 800 20px/1.15 var(--sans); color: var(--ok); font-variant-numeric: tabular-nums; } .vs .b.warn { color: var(--warn); }
+</style>
+</head>
+<body>
+<div id="viewport"><div id="stage"></div></div>
+<div id="help"><b>→</b> / <b>Space</b> next beat &nbsp; <b>←</b> back &nbsp; <b>R</b> replay slide &nbsp; <b>A</b> auto-advance (GIF timing)<br>
+<b>P</b> presenter view &nbsp; <b>F</b> fullscreen &nbsp; <b>B</b> blank screen &nbsp; <b>1</b>-<b>9</b>, <b>0</b> jump to slide &nbsp; <b>H</b> this help</div>
+<script src="script.js"></script>
+<script src="engine.js"></script>
+<script src="scenes.js"></script>
+</body>
+</html>

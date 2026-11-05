@@ -1,0 +1,70 @@
+{
+  "scenes": [
+    {
+      "n": 1,
+      "id": "deploys",
+      "title": "What changed at 09:58",
+      "beats": [
+        {
+          "id": "history",
+          "dur": 4.8,
+          "hold": 7.64
+        },
+        {
+          "id": "latency",
+          "dur": 5,
+          "hold": 5.22
+        },
+        {
+          "id": "gap",
+          "dur": 2.6,
+          "hold": 10.29
+        }
+      ]
+    },
+    {
+      "n": 2,
+      "id": "cache",
+      "title": "One key per session",
+      "beats": [
+        {
+          "id": "stats",
+          "dur": 4.6,
+          "hold": 2.96
+        },
+        {
+          "id": "diff",
+          "dur": 4.8,
+          "hold": 7.64
+        },
+        {
+          "id": "note",
+          "dur": 2.4,
+          "hold": 2.93
+        }
+      ]
+    },
+    {
+      "n": 3,
+      "id": "rollback",
+      "title": "Roll back, then measure",
+      "beats": [
+        {
+          "id": "rollback",
+          "dur": 4.4,
+          "hold": 4.04
+        },
+        {
+          "id": "recover",
+          "dur": 5,
+          "hold": 4.78
+        },
+        {
+          "id": "close",
+          "dur": 4,
+          "hold": 8.89
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Console kit</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+/* ------------------------------------------------------------------ Console kit
+   One terminal session that runs through the whole talk. Near-black, JetBrains Mono inside the
+   panes, Inter for the few labels. tmux-style panes with a title bar, a status line at the bottom
+   instead of a caption bar, ok/warn/err lines, red/green diff lines, a blinking cursor, a spinner.
+   Scene markup: a header, panes, cards, then the captions (the status line). See deck/scenes.js. */
+:root {
+  --bg: #0b0f17; --bg-2: #0e1420; --pane: #111826; --pane-2: #0d131d; --bar: #1a2334; --line: #243047; --line-2: #2f3d5a;
+  --ink: #dbe4f3; --ink-2: #a7b4ca; --muted: #6f7d95; --faint: #43506a;
+  --green: #5be49b; --green-soft: rgba(91, 228, 155, .1); --amber: #ffcc66; --amber-soft: rgba(255, 204, 102, .1);
+  --red: #ff6b6b; --red-soft: rgba(255, 107, 107, .1); --blue: #6fa8ff; --blue-soft: rgba(111, 168, 255, .12);
+  --cyan: #67d6e8; --purple: #c39bff; --pink: #ff8fb3;
+  --mono: 'JetBrains Mono', Consolas, 'Cascadia Mono', monospace; --sans: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #05070b; overflow: hidden; }
+#viewport { position: fixed; inset: 0; display: grid; place-items: center; cursor: pointer; }
+#stage { width: 1920px; height: 1080px; flex: none; position: relative; overflow: hidden; color: var(--ink); font-family: var(--mono);
+  background: radial-gradient(ellipse at 30% 0%, #141c2b 0%, var(--bg) 55%, #080b12 100%); }
+.scene { position: absolute; inset: 0; display: none; }
+.scene.active { display: block; }
+.abs { position: absolute; }
+body.blank #stage { visibility: hidden; }
+#help { display: none; position: fixed; right: 18px; bottom: 18px; z-index: 9; background: rgba(17, 24, 38, .96); color: var(--ink);
+  font: 15px/1.7 var(--sans); padding: 14px 18px; border-radius: 10px; border: 1px solid var(--line); }
+body.help #help { display: block; }
+#help b { color: var(--amber); font-family: var(--mono); }
+
+/* --------------------------------------------------------------- header, labels, tags */
+.hd { position: absolute; left: 72px; right: 72px; top: 44px; }
+.kick { font: 500 15px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.title { margin: 10px 0 0; font: 700 42px/1.1 var(--mono); color: var(--ink); letter-spacing: -.01em; white-space: nowrap; }
+.title::before { content: '// '; color: var(--faint); }
+.sub { margin: 8px 0 0; font: 400 21px/1.35 var(--sans); color: var(--ink-2); }
+.tags { position: absolute; right: 0; top: 4px; display: flex; gap: 10px; }
+.tag { font: 500 14px/1 var(--mono); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--line-2); color: var(--ink-2); background: var(--pane-2); }
+.tag.green { color: var(--green); border-color: rgba(91, 228, 155, .4); } .tag.amber { color: var(--amber); border-color: rgba(255, 204, 102, .4); }
+.tag.red { color: var(--red); border-color: rgba(255, 107, 107, .4); } .tag.blue { color: var(--blue); border-color: rgba(111, 168, 255, .4); }
+.label { font: 500 13px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.sans { font-family: var(--sans); }
+.green { color: var(--green); } .amber { color: var(--amber); } .red { color: var(--red); } .blue { color: var(--blue); } .cyan { color: var(--cyan); } .purple { color: var(--purple); } .muted { color: var(--muted); }
+
+/* --------------------------------------------------------------- panes (tmux-style). Size through --w/--h so a pane can grow or shrink. */
+.pane { position: absolute; width: calc(var(--w) * 1px); height: calc(var(--h) * 1px); background: var(--pane); border: 1px solid var(--line); border-radius: 10px;
+  overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .03); }
+.pane.focus { border-color: var(--line-2); box-shadow: 0 0 0 2px rgba(111, 168, 255, .25), 0 10px 30px rgba(0, 0, 0, .35); }
+.pane .bar { height: 40px; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: var(--bar); border-bottom: 1px solid var(--line); }
+.pane .bar .dots { display: flex; gap: 6px; } .pane .bar .dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--faint); display: block; }
+.pane.focus .bar .dots i:nth-child(1) { background: #ff5f57; } .pane.focus .bar .dots i:nth-child(2) { background: #febc2e; } .pane.focus .bar .dots i:nth-child(3) { background: #28c840; }
+.pane .bar .pt { font: 500 15px/1 var(--mono); color: var(--ink-2); }
+.pane .bar .pt b { color: var(--ink); font-weight: 600; }
+.pane .bar .tag { margin-left: auto; padding: 5px 9px; font-size: 12px; }
+.pane .body { position: absolute; left: 0; right: 0; top: 40px; bottom: 0; overflow: hidden; padding: 14px 18px; }
+.pane .lines { font: 400 18.5px/1.6 var(--mono); color: var(--ink); white-space: pre-wrap; word-break: break-word; }
+.pane.lg .lines { font-size: 21px; } .pane.sm .lines { font-size: 16px; line-height: 1.55; }
+
+/* lines. Hidden until streamed (.on); a .static pane shows them all. */
+.ln { display: block; min-height: 1.6em; opacity: 0; padding: 0 8px; margin: 0 -8px; border-radius: 4px; }
+.ln.on, .pane.static .ln { opacity: 1; }
+.ln.cmd { color: var(--ink); } .ln .pr { color: var(--green); font-weight: 600; } .ln .pr.ps { color: var(--blue); }
+.ln.out { color: var(--ink-2); } .ln.dim { color: var(--muted); }
+.ln.ok { color: var(--green); } .ln.warn { color: var(--amber); } .ln.err { color: var(--red); } .ln.info { color: var(--blue); }
+.ln.add { color: var(--green); background: var(--green-soft); } .ln.del { color: var(--red); background: var(--red-soft); text-decoration: none; }
+.ln.json { color: var(--ink-2); } .ln .k { color: var(--purple); } .ln .s { color: var(--amber); } .ln .n { color: var(--cyan); } .ln .b { color: var(--pink); }
+.ln .call { color: var(--cyan); } .ln .arg { color: var(--ink-2); } .ln .ms { color: var(--muted); }
+.ln .spin { display: inline-block; width: 1.1em; color: var(--blue); } .ln .spin::before { content: var(--g, "⠋"); } .ln .spin.done { color: var(--green); }
+.ln.bold .tx { font-weight: 700; }
+.ln .cur { display: inline-block; width: .62em; height: 1.15em; background: var(--ink); vertical-align: -.2em; opacity: var(--on, 1); border-radius: 1px; }
+.ln.mark { background-image: linear-gradient(var(--blue-soft), var(--blue-soft)); background-repeat: no-repeat; background-size: calc(var(--hl, 0) * 100%) 100%;
+  box-shadow: inset calc(var(--hl, 0) * 3px) 0 0 var(--blue); }
+.ln.mark.amber { background-image: linear-gradient(var(--amber-soft), var(--amber-soft)); box-shadow: inset calc(var(--hl, 0) * 3px) 0 0 var(--amber); }
+.ln.mark.red { background-image: linear-gradient(var(--red-soft), var(--red-soft)); box-shadow: inset calc(var(--hl, 0) * 3px) 0 0 var(--red); }
+.ln.mark.green { background-image: linear-gradient(var(--green-soft), var(--green-soft)); box-shadow: inset calc(var(--hl, 0) * 3px) 0 0 var(--green); }
+
+/* a note beside the terminal: left border carries the colour */
+.card { position: absolute; background: var(--pane-2); border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: 8px; padding: 14px 18px;
+  font: 400 17.5px/1.45 var(--sans); color: var(--ink-2); }
+.card .ct { font: 600 16px/1.3 var(--mono); color: var(--ink); margin-bottom: 6px; }
+.card.green { border-left-color: var(--green); } .card.green .ct { color: var(--green); }
+.card.amber { border-left-color: var(--amber); } .card.amber .ct { color: var(--amber); }
+.card.red { border-left-color: var(--red); } .card.red .ct { color: var(--red); }
+.card .mono { font: 500 15px/1.4 var(--mono); color: var(--ink); background: rgba(255, 255, 255, .05); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
+.kpi { position: absolute; width: 190px; }
+.kpi .kv { font: 700 52px/1 var(--mono); color: var(--green); letter-spacing: -.02em; white-space: nowrap; }
+.kpi .kl { margin-top: 10px; font: 400 17px/1.35 var(--sans); color: var(--ink-2); }
+
+/* engine hooks: clip reveal (.wipe), line highlight (.mark, above), SVG stroke draw (.draw), strike, typing caret */
+.wipe { clip-path: inset(-4px calc((1 - var(--wipe, 0)) * 100%) -4px -4px); }
+.draw { stroke-dasharray: var(--len, 2000) calc(var(--len, 2000) * 2); stroke-dashoffset: calc(var(--len, 2000) * (1 - var(--draw, 0))); }  /* gap 2L: no dot from a zero-length dash at the end of an undrawn round-capped stroke */
+.strike { position: relative; }
+.strike::after { content: ''; position: absolute; left: -2px; right: -2px; top: 52%; height: 2px; background: var(--red); transform-origin: left center; transform: scaleX(var(--strike, 0)); }
+.caret::after { content: '▍'; color: var(--ink); margin-left: 1px; }
+svg.overlay { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: visible; pointer-events: none; }
+.ink { fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ink.blue { stroke: var(--blue); } .ink.green { stroke: var(--green); } .ink.amber { stroke: var(--amber); } .ink.red { stroke: var(--red); }
+
+/* --------------------------------------------------------------- the status line (captions) */
+.captions { position: absolute; left: 0; right: 0; bottom: 0; height: 46px; background: #121a28; border-top: 1px solid var(--line); display: grid; align-items: center; z-index: 6; }
+.captions::before { content: '[demo]'; position: absolute; left: 0; top: 0; bottom: 0; display: flex; align-items: center; padding: 0 14px; background: var(--green); color: #07130c;
+  font: 700 15px/1 var(--mono); }
+.captions::after { content: '→ next · ← back · P presenter'; position: absolute; right: 18px; top: 0; bottom: 0; display: flex; align-items: center; font: 400 14px/1 var(--mono); color: var(--faint); }
+.caption { grid-area: 1 / 1; padding: 0 320px 0 96px; font: 500 19px/46px var(--mono); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.caption b { color: var(--amber); font-weight: 600; }
+.caption::before { content: '>'; color: var(--green); margin-right: 10px; }
+</style>
+</head>
+<body>
+<div id="viewport"><div id="stage"></div></div>
+<div id="help"><b>→</b> / <b>Space</b> next beat &nbsp; <b>←</b> back &nbsp; <b>R</b> replay slide &nbsp; <b>A</b> auto-advance (GIF timing)<br>
+<b>P</b> presenter view &nbsp; <b>F</b> fullscreen &nbsp; <b>B</b> blank screen &nbsp; <b>1</b>-<b>9</b>, <b>0</b> jump to slide &nbsp; <b>H</b> this help</div>
+<script src="script.js"></script>
+<script src="engine.js"></script>
+<script src="scenes.js"></script>
+</body>
+</html>

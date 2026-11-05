@@ -1,0 +1,70 @@
+{
+  "scenes": [
+    {
+      "n": 1,
+      "id": "screen",
+      "title": "One service, one screen",
+      "beats": [
+        {
+          "id": "up",
+          "dur": 3.6,
+          "hold": 8.84
+        },
+        {
+          "id": "numbers",
+          "dur": 4,
+          "hold": 4.89
+        },
+        {
+          "id": "latest",
+          "dur": 3,
+          "hold": 5
+        }
+      ]
+    },
+    {
+      "n": 2,
+      "id": "incident",
+      "title": "The needle reaches the alert",
+      "beats": [
+        {
+          "id": "deploy",
+          "dur": 3.8,
+          "hold": 3.31
+        },
+        {
+          "id": "alert",
+          "dur": 4.6,
+          "hold": 8.29
+        },
+        {
+          "id": "reply",
+          "dur": 4.6,
+          "hold": 8.29
+        }
+      ]
+    },
+    {
+      "n": 3,
+      "id": "recovery",
+      "title": "Rollback, then the close",
+      "beats": [
+        {
+          "id": "rollback",
+          "dur": 4.2,
+          "hold": 6.47
+        },
+        {
+          "id": "clear",
+          "dur": 4.4,
+          "hold": 5.82
+        },
+        {
+          "id": "close",
+          "dur": 4.4,
+          "hold": 7.6
+        }
+      ]
+    }
+  ]
+}

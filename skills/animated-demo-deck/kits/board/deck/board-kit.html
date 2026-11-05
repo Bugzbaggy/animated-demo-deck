@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Board kit</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+/* ------------------------------------------------------------------ Board kit
+   One big whiteboard; the camera pans and zooms between regions. Paper, marker colours,
+   handwriting (Caveat for titles, Patrick Hand for everything else), sketched boxes, sticky
+   notes, taped printouts, arrows drawn on. Scene markup: <div class="cam">regions</div>,
+   then .minimap, then the captions. See deck/scenes.js for the helpers that build those. */
+:root {
+  --paper: #f6f1e3; --paper-2: #fffdf6; --grid: rgba(60, 50, 30, .075);
+  --ink: #26241f; --ink-2: #4a463d; --pencil: #7a766b; --faint: #b8b3a5;
+  --blue: #2458d6; --blue-soft: #e4ecff; --red: #d33a2f; --red-soft: #fde6e3; --green: #2f8f4e; --green-soft: #e1f3e6;
+  --amber: #d9930d; --amber-soft: #fff1cf; --purple: #7a4bd0;
+  --note: #fff3a8; --note-pink: #ffd3dc; --note-blue: #cfe6ff; --note-green: #d8f5d0;
+  --hwt: 'Caveat', 'Segoe Print', cursive; --hw: 'Patrick Hand', 'Segoe Print', 'Comic Sans MS', cursive;
+  --sans: 'Inter', 'Segoe UI', system-ui, sans-serif; --mono: 'JetBrains Mono', Consolas, monospace; --slack: 'Lato', 'Segoe UI', sans-serif;
+  --sketch: 255px 15px 225px 15px / 15px 225px 15px 255px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #2a261f; overflow: hidden; }
+#viewport { position: fixed; inset: 0; display: grid; place-items: center; cursor: pointer; }
+#stage { width: 1920px; height: 1080px; flex: none; position: relative; overflow: hidden; color: var(--ink); font-family: var(--hw);
+  background-color: var(--paper);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 48px 48px; }
+#stage::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(70, 55, 20, .14) 100%); }
+.scene { position: absolute; inset: 0; display: none; }
+.scene.active { display: block; }
+.abs { position: absolute; }
+body.blank #stage { visibility: hidden; }
+#help { display: none; position: fixed; right: 18px; bottom: 18px; z-index: 9; background: rgba(38, 36, 31, .94); color: #f6f1e3;
+  font: 16px/1.7 var(--hw); padding: 14px 18px; border-radius: 12px; }
+body.help #help { display: block; }
+#help b { color: #ffd37a; font-family: var(--mono); font-size: 14px; }
+
+/* --------------------------------------------------------------- the board and the camera */
+.cam { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.region { position: absolute; width: 1920px; height: 1080px; }
+/* Future regions: a paper-coloured veil instead of opacity, so no offscreen group per region (cheap when the
+   camera shows the whole board); no blurred shadows outside the live region, for the same reason. */
+.region.future::after { content: ''; position: absolute; inset: -60px; background: rgba(246, 241, 227, .86); pointer-events: none; }
+.region:not(.live) .note > .in, .region:not(.live) .printout > .in, .region:not(.live) .box > .in { box-shadow: none !important; }
+/* Regions the camera flies past show their finished state: titles written, strokes drawn, marks on.
+   The live region is driven by the engine's inline values, which win over these. Add a line here for any
+   other variable your scenes animate (the Flow deck adds .seg { --w: 1 } for its lag bar). */
+.region:not(.live) .wipe { --wipe: 1; }
+.region:not(.live) .draw { --draw: 1; }
+.region:not(.live) .mark { --hl: 1; }
+.region:not(.live) .strike { --strike: 1; }
+.region:not(.live) .pkt { display: none; }   /* moving markers (a dot on a track) belong to their own slide only */
+.region .rt { position: absolute; left: 80px; top: 54px; }
+svg.overlay { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: visible; pointer-events: none; }
+.minimap { position: absolute; right: 26px; bottom: 26px; display: grid; gap: 4px; padding: 6px; border: 2px solid var(--ink); border-radius: var(--sketch);
+  background: rgba(255, 253, 246, .9); z-index: 5; }
+.minimap i { display: block; width: 22px; height: 13px; border: 1.5px solid var(--pencil); border-radius: 3px; background: transparent; }
+.minimap i.done { background: var(--faint); border-color: var(--faint); }
+.minimap i.now { background: var(--blue); border-color: var(--blue); }
+
+/* --------------------------------------------------------------- handwriting and marker */
+.hw { font: 400 26px/1.3 var(--hw); }
+.title { margin: 0; font: 700 78px/1.02 var(--hwt); color: var(--ink); letter-spacing: -.01em; white-space: nowrap; }
+.title.sm { font-size: 60px; }
+.sub { margin: 10px 0 0; font: 400 31px/1.3 var(--hw); color: var(--ink-2); }
+.kick { font: 400 24px/1 var(--hw); letter-spacing: .08em; text-transform: uppercase; color: var(--pencil); }
+.blue { color: var(--blue); } .red { color: var(--red); } .green { color: var(--green); } .amber { color: var(--amber); } .purple { color: var(--purple); } .pencil { color: var(--pencil); }
+.mono { font: 500 .78em/1.4 var(--mono); background: rgba(255, 255, 255, .7); border: 1px solid rgba(0, 0, 0, .12); border-radius: 6px; padding: 1px 7px; color: var(--ink); white-space: nowrap; }
+.small { font-size: 22px; }
+.tag { display: inline-block; font: 400 22px/1 var(--hw); padding: 8px 14px; border: 2px solid var(--ink); border-radius: var(--sketch); background: var(--paper-2); }
+.tag.blue { border-color: var(--blue); color: var(--blue); } .tag.green { border-color: var(--green); color: var(--green); }
+.tag.red { border-color: var(--red); color: var(--red); } .tag.amber { border-color: var(--amber); color: #8a5c05; }
+.tags { position: absolute; right: 80px; top: 64px; display: flex; gap: 12px; }
+
+/* sketched box: the outer div is what the engine moves; .in carries the tilt */
+.box { position: absolute; }
+.box > .in { height: 100%; border: 2.5px solid var(--ink); border-radius: var(--sketch); background: rgba(255, 253, 246, .72); padding: 18px 22px;
+  transform: rotate(var(--tilt, 0deg)); font: 400 25px/1.3 var(--hw); }
+.box.blue > .in { border-color: var(--blue); } .box.red > .in { border-color: var(--red); } .box.green > .in { border-color: var(--green); }
+.box.amber > .in { border-color: var(--amber); } .box.dashed > .in { border-style: dashed; background: transparent; }
+.box.plain > .in { background: transparent; border-color: transparent; }
+.box h3 { margin: 0 0 6px; font: 700 34px/1.1 var(--hwt); }
+.box p { margin: 0; color: var(--ink-2); }
+.box .num { display: inline-grid; place-items: center; width: 40px; height: 40px; border: 2.5px solid var(--ink); border-radius: 50% 48% 52% 50% / 52% 50% 50% 48%;
+  font: 700 24px/1 var(--hwt); background: var(--paper-2); margin-right: 10px; vertical-align: middle; }
+
+/* sticky note: same wrapper pattern */
+.note { position: absolute; width: 320px; }
+.note > .in { padding: 20px 22px 22px; background: var(--note); box-shadow: 1px 6px 14px rgba(40, 30, 0, .16); transform: rotate(var(--tilt, -1.6deg));
+  font: 400 24px/1.28 var(--hw); color: var(--ink); position: relative; min-height: 100px; }
+.note > .in::before { content: ''; position: absolute; left: 50%; top: -13px; width: 96px; height: 26px; margin-left: -48px; transform: rotate(-2.5deg);
+  background: rgba(255, 255, 255, .5); border: 1px solid rgba(0, 0, 0, .07); box-shadow: 0 1px 2px rgba(0, 0, 0, .05); }
+.note.pink > .in { background: var(--note-pink); } .note.blue > .in { background: var(--note-blue); } .note.green > .in { background: var(--note-green); }
+.note.notape > .in::before { display: none; }
+.note .nt { font: 700 28px/1.1 var(--hwt); margin-bottom: 6px; }
+.note .nt.red { color: var(--red); } .note .nt.blue { color: var(--blue); } .note .nt.green { color: var(--green); }
+.note b { font-weight: 400; background: linear-gradient(transparent 12%, rgba(255, 255, 255, .75) 12%, rgba(255, 255, 255, .75) 88%, transparent 88%); }
+
+/* a printout taped to the board (a screenshot, a message, a table) */
+.printout { position: absolute; }
+.printout > .in { background: #fff; padding: 14px 16px; box-shadow: 0 8px 22px rgba(40, 30, 0, .18); transform: rotate(var(--tilt, .5deg)); position: relative; height: 100%; overflow: hidden; }
+.printout > .in::before, .printout > .in::after { content: ''; position: absolute; top: -12px; width: 110px; height: 28px; background: rgba(255, 244, 200, .6);
+  border: 1px solid rgba(0, 0, 0, .06); box-shadow: 0 1px 2px rgba(0, 0, 0, .06); z-index: 3; }
+.printout > .in::before { left: 22px; transform: rotate(-6deg); } .printout > .in::after { right: 22px; transform: rotate(5deg); }
+.printout.onetape > .in::after { display: none; } .printout.onetape > .in::before { left: 50%; margin-left: -55px; transform: rotate(-2deg); }
+.printout .pl { position: absolute; left: 16px; bottom: 8px; font: 400 15px/1 var(--hw); color: var(--pencil); }
+
+/* marker highlight (A.mark), underline/circle/arrow (A.draw), clip reveal (A.wipe), strike (A.strike), caret (A.type) */
+.mark { background-image: linear-gradient(transparent 14%, rgba(255, 222, 0, .55) 14%, rgba(255, 222, 0, .55) 86%, transparent 86%); background-repeat: no-repeat;
+  background-size: calc(var(--hl, 0) * 100%) 100%; -webkit-box-decoration-break: clone; box-decoration-break: clone; padding: 0 3px; margin: 0 -3px; }
+.mark.pink { background-image: linear-gradient(transparent 14%, rgba(255, 120, 150, .42) 14%, rgba(255, 120, 150, .42) 86%, transparent 86%); }
+.mark.green { background-image: linear-gradient(transparent 14%, rgba(110, 230, 140, .5) 14%, rgba(110, 230, 140, .5) 86%, transparent 86%); }
+.draw { stroke-dasharray: var(--len, 3000) calc(var(--len, 3000) * 2); stroke-dashoffset: calc(var(--len, 3000) * (1 - var(--draw, 0))); }  /* gap 2L: no dot from a zero-length dash at the end of an undrawn round-capped stroke */
+.wipe { clip-path: inset(-8% calc((1 - var(--wipe, 0)) * 106% - 6%) -8% -3%); }  /* overhangs, so swashes are not clipped */
+.strike { position: relative; }
+.strike::after { content: ''; position: absolute; left: -4px; right: -4px; top: 50%; height: 3px; background: var(--red); border-radius: 2px;
+  transform-origin: left center; transform: scaleX(var(--strike, 0)) rotate(-1.2deg); }
+.caret::after { content: '|'; color: var(--blue); font-weight: 700; margin-left: 1px; }
+.ink { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.ink.blue { stroke: var(--blue); } .ink.red { stroke: var(--red); } .ink.green { stroke: var(--green); } .ink.amber { stroke: var(--amber); } .ink.pencil { stroke: var(--pencil); stroke-width: 2.2; }
+.ink.thin { stroke-width: 2; } .ink.thick { stroke-width: 4.5; }
+
+/* a chat message on a taped printout (the text as posted) */
+.slack { font-family: var(--slack); color: #1d1c1d; }
+.sk-msg { display: grid; grid-template-columns: 40px 1fr; gap: 12px; padding: 6px 2px; }
+.sk-av { width: 40px; height: 40px; border-radius: 8px; display: grid; place-items: center; color: #fff; font: 900 15px/1 var(--slack); }
+.sk-av.sm { width: 22px; height: 22px; border-radius: 5px; font-size: 10px; }
+.av-bot { background: linear-gradient(135deg, #14b8a6, #0f766e); } .av-oc { background: #3b4fb8; }
+.sk-meta { display: flex; align-items: baseline; gap: 8px; }
+.sk-name { font: 900 17px/1.3 var(--slack); }
+.sk-time { font: 400 12.5px/1 var(--slack); color: #616061; }
+.sk-app { font: 700 10px/1 var(--slack); color: #616061; background: #e8e8e8; padding: 3px 4px; border-radius: 3px; position: relative; top: -2px; }
+.sk-text { font: 400 16px/1.45 var(--slack); }
+.sk-text p { margin: 0 0 6px; } .sk-text b { font-weight: 900; }
+.sk-bul { margin: 0 0 4px; padding-left: 18px; text-indent: -18px; }
+.sk-code { font: 500 13px/1 var(--mono); color: #c01343; background: #f6f6f6; border: 1px solid #e1e1e1; border-radius: 4px; padding: 2px 4px; }
+.sk-mention { color: #1264a3; background: rgba(29, 155, 209, .1); border-radius: 3px; padding: 0 2px; }
+.sk-ell { color: #a0a0a4; font: 700 15px/1 var(--slack); letter-spacing: .2em; }
+.sk-file { display: inline-flex; align-items: center; gap: 10px; margin-top: 2px; padding: 7px 14px 7px 7px; border: 1px solid #dcdcde; border-radius: 9px; background: #fff; }
+.sk-file .fi { width: 36px; height: 36px; border-radius: 8px; background: #e34c26; color: #fff; display: grid; place-items: center; font: 900 10px/1 var(--slack); }
+.sk-file .fn { font: 700 14px/1.3 var(--slack); } .sk-file small { display: block; font: 400 12px/1.3 var(--slack); color: #616061; }
+.sk-divider { display: flex; align-items: center; gap: 12px; padding: 6px 2px; font: 400 13px/1 var(--slack); color: #616061; }
+.sk-divider::after { content: ''; flex: 1; border-top: 1px solid #e3e3e5; }
+.sk-pre { margin: 4px 0 8px; padding: 8px 12px; background: #f8f8f8; border: 1px solid #e1e1e1; border-radius: 6px; font: 400 13px/1.5 var(--mono); white-space: pre-wrap; }
+
+/* captions: a handwritten strip, centred; all captions share one grid cell so they fade over each other */
+.captions { position: absolute; left: 0; right: 0; bottom: 30px; display: grid; justify-items: center; align-items: end; z-index: 6; pointer-events: none; }
+.caption { grid-area: 1 / 1; width: max-content; max-width: 1480px; padding: 9px 28px 11px; font: 400 29px/1.3 var(--hw); color: var(--ink); text-align: center;
+  background: var(--paper-2); border: 2px solid var(--ink); border-radius: var(--sketch); box-shadow: 0 4px 12px rgba(40, 30, 0, .1); }
+.caption b { font-weight: 400; color: var(--blue); }
+.caption:empty, .caption:has(> .blank) { visibility: hidden; }   /* pass '<i class="blank"></i>' to clear the strip on a beat */
+</style>
+</head>
+<body>
+<div id="viewport"><div id="stage"></div></div>
+<div id="help"><b>→</b> / <b>Space</b> next beat &nbsp; <b>←</b> back &nbsp; <b>R</b> replay slide &nbsp; <b>A</b> auto-advance (GIF timing)<br>
+<b>P</b> presenter view &nbsp; <b>F</b> fullscreen &nbsp; <b>B</b> blank screen &nbsp; <b>1</b>-<b>9</b>, <b>0</b> jump to slide &nbsp; <b>H</b> this help</div>
+<script src="script.js"></script>
+<script src="engine.js"></script>
+<script src="scenes.js"></script>
+</body>
+</html>
